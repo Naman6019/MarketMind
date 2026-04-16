@@ -1,16 +1,8 @@
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+import sys
+import os
 
-app = FastAPI()
+# Add root to path for module resolution
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
 
-@app.get("/api/health")
-async def health():
-    return {"status": "ok", "message": "The Vercel function is running correctly."}
-
-@app.get("/api/{path:path}")
-async def catch_all(path: str):
-    return {"status": "error", "message": f"Path /api/{path} hit, but app modules not loaded for safety."}
-
-@app.get("/")
-async def root():
-    return {"status": "ok", "message": "Root hit"}
+from app.main import app
