@@ -5,6 +5,7 @@ Reads SUPABASE_URL and SUPABASE_KEY from environment variables.
 import os
 import time
 import logging
+import math
 import pandas as pd
 import yfinance as yf
 from supabase import create_client
@@ -57,6 +58,13 @@ def fetch_single_ticker(ticker: str):
             data["recommendation"] = str(rec).replace('_', ' ').title()
     except Exception as e:
         logger.warning(f"Failed for {ticker}: {e}")
+        
+    # --- NEW CLEANUP BLOCK ---
+    # Convert any NaN or Infinity floats to None (JSON null)
+    for key, value in data.items():
+        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+            data[key] = None
+            
     return data
 
 def main():
