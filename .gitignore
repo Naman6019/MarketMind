@@ -82,3 +82,6 @@ logs/
 # ==========================
 node_modules/
 .npm
+
+# Embedded repo
+MarketMind/
