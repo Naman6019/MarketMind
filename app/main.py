@@ -8,8 +8,6 @@ from typing import Dict, Any, List
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 import httpx
 import yfinance as yf
@@ -29,11 +27,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-
-# Directory setups
-PUBLIC_DIR = os.path.join(BASE_DIR, "public")
-
-app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="public")
 
 app.add_middleware(
     CORSMiddleware,
@@ -349,13 +342,6 @@ Screener Results:
         return "Sorry, I am facing connectivity issues with the intelligence core."
         
     return response
-
-@app.get("/")
-def serve_index(): return FileResponse(os.path.join(PUBLIC_DIR, "index.html"))
-@app.get("/style.css")
-def serve_css(): return FileResponse(os.path.join(PUBLIC_DIR, "style.css"))
-@app.get("/script.js")
-def serve_js(): return FileResponse(os.path.join(PUBLIC_DIR, "script.js"))
 
 @app.get("/api/trigger-fetch")
 async def trigger_eod_fetch(background_tasks: BackgroundTasks):
