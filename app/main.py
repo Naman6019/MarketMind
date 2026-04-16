@@ -16,7 +16,6 @@ import yfinance as yf
 import feedparser
 from datetime import datetime, timedelta
 import pytz
-from tradingview_ta import TA_Handler, Interval
 
 # Must run before any os.environ.get()
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -177,16 +176,6 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
             "tv_recommendation": "N/A"
         }
         
-        try:
-            tv_ticker = ticker.replace('.NS', '').replace('.BO', '')
-            if tv_ticker == '^NSEI': tv_ticker = 'NIFTY'
-            handler = TA_Handler(symbol=tv_ticker, screener="india", exchange="NSE", interval=Interval.INTERVAL_1_DAY)
-            analysis = handler.get_analysis()
-            data["tv_recommendation"] = analysis.summary.get('RECOMMENDATION', 'N/A')
-            if 'RSI' in analysis.indicators:
-                data["rsi_14d"] = round(analysis.indicators['RSI'], 2)
-        except Exception as tv_e:
-            pass
             
         return data
     except Exception as e:
