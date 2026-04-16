@@ -1,0 +1,29 @@
+name: EOD Stock Data Fetch
+
+on:
+  schedule:
+    # Runs at 4:30 PM IST (11:00 UTC) on weekdays
+    - cron: '0 11 * * 1-5'
+  workflow_dispatch: # allows manual trigger from GitHub UI
+
+jobs:
+  fetch-nifty-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install yfinance pandas supabase python-dotenv
+
+      - name: Run EOD Fetcher
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scripts/run_fetch.py
