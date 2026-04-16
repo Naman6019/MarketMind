@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MarketMind | AI Stock Market Research</title>
+  
+  <!-- SEO Best Practices -->
+  <meta name="description" content="MarketMind is a 3-agent stock market research assistant for Indian retail investors, providing quantitative data, news context, and objective pattern observation.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Markdown Library -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo"></div>
+        <h1>MarketMind</h1>
+      </div>
+      <p class="tagline">Data-driven market context.</p>
+      
+      <div class="info-panel">
+        <h3>Agent Pipeline</h3>
+        <ul class="pipeline-list">
+          <li><span class="dot q-dot"></span> Quant Agent</li>
+          <li><span class="dot n-dot"></span> News Parser</li>
+          <li><span class="dot s-dot"></span> Synthesis Core</li>
+        </ul>
+      </div>
+
+      <div class="disclaimer-sidebar">
+        <p>MarketMind is an informational research tool only. Nothing presented constitutes investment advice. Always consult a SEBI-registered Advisor.</p>
+      </div>
+    </aside>
+
+    <main class="chat-area">
+      <header class="chat-header">
+        <h2>Research Session</h2>
+      </header>
+
+      <div id="chatHistory" class="chat-history">
+        <div class="message system-msg">
+          <div class="msg-content">
+            <p>Welcome to MarketMind. I monitor NSE/BSE quant data and latest financial news. How can I assist your market research today?</p>
+            <div class="suggestions">
+              <button class="suggestion-btn" onclick="useSuggestion('How is Reliance Industries performing today?')">Reliance Industries</button>
+              <button class="suggestion-btn" onclick="useSuggestion('What are the latest updates on Tata Motors?')">Tata Motors News</button>
+              <button class="suggestion-btn" onclick="useSuggestion('Show me the NIFTY 50 trend and recent news.')">NIFTY 50 Analysis</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <div class="input-wrapper">
+          <textarea id="userInput" placeholder="Ask about stocks, indices, or market news..." rows="1"></textarea>
+          <button id="sendBtn" class="send-button" aria-label="Send Message">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
+        </div>
+        <div class="processing-status" id="processStatus">
+          Pipeline thinking...
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/script.js"></script>
+</body>
+</html>
