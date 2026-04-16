@@ -16,6 +16,7 @@ import yfinance as yf
 import feedparser
 from datetime import datetime, timedelta
 import pytz
+from tradingview_ta import TA_Handler, Interval
 
 # Must run before any os.environ.get()
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
