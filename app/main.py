@@ -15,6 +15,10 @@ import feedparser
 from datetime import datetime, timedelta
 import pytz
 
+# Redirect yfinance cache to the writable /tmp directory
+os.environ["YFINANCE_CACHE_DIR"] = "/tmp/yfinance_cache"
+yf.set_tz_cache_location("/tmp/yfinance_tz_cache")
+
 # Must run before any os.environ.get()
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
