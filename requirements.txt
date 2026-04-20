@@ -9,4 +9,3 @@ python-dotenv
 pandas
 numpy
 pydantic
-starlette
