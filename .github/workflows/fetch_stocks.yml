@@ -26,4 +26,4 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python scripts/run_fetch.py
+        run: python backend/scripts/run_fetch.py

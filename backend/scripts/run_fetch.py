@@ -39,20 +39,39 @@ def compute_rsi(data: pd.DataFrame, window=14):
     rsi = 100 - (100 / (1 + rs))
     return float(rsi.iloc[-1])
 
-def fetch_single_ticker(ticker: str):
-    data = {"symbol": ticker, "rsi": None, "pe_ratio": None, "recommendation": None, "current_price": None}
+def fetch_single_ticker(ticker: str, nifty_hist: pd.DataFrame = None):
+    data = {
+        "symbol": ticker, "rsi": None, "pe_ratio": None, 
+        "recommendation": None, "current_price": None,
+        "change_pct": None, "market_cap": None, "beta": None, "alpha_vs_nifty": None
+    }
     try:
         stock = yf.Ticker(f"{ticker}.NS")
         info = stock.info
         hist = stock.history(period="3mo")
         if not hist.empty:
-            data["current_price"] = float(round(hist['Close'].iloc[-1], 2))
+            current = float(round(hist['Close'].iloc[-1], 2))
+            prev = float(round(hist['Close'].iloc[-2], 2)) if len(hist) > 1 else current
+            data["current_price"] = current
+            data["change_pct"] = float(round(((current - prev) / prev) * 100, 2)) if prev else 0.0
+            
             rsi = compute_rsi(hist)
             if rsi is not None:
                 data["rsi"] = float(round(rsi, 2))
+                
+            if nifty_hist is not None and not nifty_hist.empty and len(hist) >= 2:
+                # 3 month return
+                stock_ret = ((hist['Close'].iloc[-1] - hist['Close'].iloc[0]) / hist['Close'].iloc[0]) * 100
+                nifty_ret = ((nifty_hist['Close'].iloc[-1] - nifty_hist['Close'].iloc[0]) / nifty_hist['Close'].iloc[0]) * 100
+                data["alpha_vs_nifty"] = float(round(stock_ret - nifty_ret, 2))
+
         pe = info.get("trailingPE", info.get("forwardPE"))
         if pe is not None:
             data["pe_ratio"] = float(round(pe, 2))
+            
+        data["market_cap"] = info.get("marketCap")
+        data["beta"] = info.get("beta")
+            
         rec = info.get("recommendationKey")
         if rec and rec != "none":
             data["recommendation"] = str(rec).replace('_', ' ').title()
@@ -73,10 +92,16 @@ def main():
 
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     logger.info(f"Starting EOD fetch for {len(NIFTY_50_TICKERS)} tickers...")
+    
+    logger.info("Pre-fetching NIFTY 50 baseline...")
+    try:
+        nifty_baseline = yf.Ticker("^NSEI").history(period="3mo")
+    except:
+        nifty_baseline = None
 
     success = 0
     for ticker in NIFTY_50_TICKERS:
-        data = fetch_single_ticker(ticker)
+        data = fetch_single_ticker(ticker, nifty_baseline)
         try:
             supabase.table('nifty_stocks').upsert(data).execute()
             success += 1
