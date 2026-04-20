@@ -1,0 +1,19 @@
+name: Mutual Fund Data Sync
+
+on:
+  schedule:
+    # 6:30 PM IST is 13:00 UTC, Mon-Fri
+    - cron: '30 13 * * 1-5'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  sync_mf_data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Sync Endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -X GET "https://market-mind-eight.vercel.app/api/cron/sync-mf" \
+          -H "Authorization: Bearer $CRON_SECRET" \
+          --fail
