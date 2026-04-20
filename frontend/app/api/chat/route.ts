@@ -75,7 +75,23 @@ export async function POST(req: Request) {
       if (toolCall.function.name === 'search_instrument') {
          const args = JSON.parse(toolCall.function.arguments);
          const searchRes = await fetch(`${getBaseUrl()}/api/search?q=${encodeURIComponent(args.search_query)}&type=${args.type}`);
+         
+         // Guard: if the search route itself returned an error page (HTML), don't crash
+         const contentType = searchRes.headers.get('content-type') || '';
+         if (!searchRes.ok || !contentType.includes('application/json')) {
+           return NextResponse.json({
+             answer: `I searched for "${args.search_query}" but the fund database appears to be empty or unavailable. Please ensure the MF data sync has been run at least once.`
+           });
+         }
+         
          const searchData = await searchRes.json();
+         
+         // If no results found, return a helpful message instead of crashing
+         if (!searchData.results || searchData.results.length === 0) {
+           return NextResponse.json({
+             answer: `I could not find any funds matching "${args.search_query}" in the database. The mutual fund database may need to be synced first. Please try again after the data sync runs.`
+           });
+         }
          
          // LLM found the matches, let's just return a systematic UI instruction directly!
          // Or perform a second pass. For simplicity, since the prompt specifies:
