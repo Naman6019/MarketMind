@@ -10,10 +10,19 @@ jobs:
   sync_mf_data:
     runs-on: ubuntu-latest
     steps:
-      - name: Call Sync Endpoint
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests supabase python-dotenv
+
+      - name: Run AMFI MF Sync
         env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          curl -X GET "https://market-mind-eight.vercel.app/api/cron/sync-mf" \
-          -H "Authorization: Bearer $CRON_SECRET" \
-          --fail
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python backend/scripts/sync_mf.py
