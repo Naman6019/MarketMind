@@ -1,0 +1,3 @@
+{
+  "/api/mf/[schemeCode]/route": "app/api/mf/[schemeCode]/route.js"
+}

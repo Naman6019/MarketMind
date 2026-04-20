@@ -1,0 +1,10 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/chat/route": "/api/chat",
+  "/api/cron/sync-mf/route": "/api/cron/sync-mf",
+  "/api/mf/[schemeCode]/route": "/api/mf/[schemeCode]",
+  "/api/search/route": "/api/search",
+  "/favicon.ico/route": "/favicon.ico",
+  "/page": "/"
+}

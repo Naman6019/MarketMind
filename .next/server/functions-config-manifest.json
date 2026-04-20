@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/cron/sync-mf": {
+      "maxDuration": 300
+    }
+  }
+}
