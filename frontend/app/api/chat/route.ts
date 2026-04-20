@@ -1,13 +1,50 @@
 import { NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
+import { supabase } from '@/lib/supabase';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Local reference to the NEXT_PUBLIC_VERCEL_URL for API loops
-const getBaseUrl = () => {
-    if (process.env.NODE_ENV === 'development') return 'http://localhost:3000';
-    return `https://${process.env.NEXT_PUBLIC_VERCEL_URL || process.env.VERCEL_URL}`;
-};
+async function searchInstrument(query: string, type: string) {
+  const results: any[] = [];
+
+  if (type === 'all' || type === 'mf') {
+    const { data: mfData } = await supabase
+      .from('mutual_funds')
+      .select('scheme_code, scheme_name, fund_house')
+      .or(`scheme_name.ilike.%${query}%,fund_house.ilike.%${query}%`)
+      .limit(10);
+
+    if (mfData) {
+      results.push(...mfData.map(mf => ({
+        id: mf.scheme_code.toString(),
+        type: 'MUTUAL_FUND',
+        displayName: mf.scheme_name,
+        subLabel: mf.fund_house,
+        identifier: mf.scheme_code.toString()
+      })));
+    }
+  }
+
+  if (type === 'all' || type === 'stock') {
+    const { data: stockData } = await supabase
+      .from('nifty_stocks')
+      .select('symbol')
+      .ilike('symbol', `%${query}%`)
+      .limit(10);
+
+    if (stockData) {
+      results.push(...stockData.map(stock => ({
+        id: stock.symbol,
+        type: 'STOCK',
+        displayName: stock.symbol,
+        subLabel: 'NSE',
+        identifier: stock.symbol
+      })));
+    }
+  }
+
+  return { results };
+}
 
 export async function POST(req: Request) {
   try {
@@ -74,28 +111,17 @@ export async function POST(req: Request) {
       
       if (toolCall.function.name === 'search_instrument') {
          const args = JSON.parse(toolCall.function.arguments);
-         const searchRes = await fetch(`${getBaseUrl()}/api/search?q=${encodeURIComponent(args.search_query)}&type=${args.type}`);
          
-         // Guard: if the search route itself returned an error page (HTML), don't crash
-         const contentType = searchRes.headers.get('content-type') || '';
-         if (!searchRes.ok || !contentType.includes('application/json')) {
-           return NextResponse.json({
-             answer: `I searched for "${args.search_query}" but the fund database appears to be empty or unavailable. Please ensure the MF data sync has been run at least once.`
-           });
-         }
-         
-         const searchData = await searchRes.json();
+         // Direct Supabase query — no HTTP loopback call that can return HTML on Vercel
+         const searchData = await searchInstrument(args.search_query, args.type);
          
          // If no results found, return a helpful message instead of crashing
          if (!searchData.results || searchData.results.length === 0) {
            return NextResponse.json({
-             answer: `I could not find any funds matching "${args.search_query}" in the database. The mutual fund database may need to be synced first. Please try again after the data sync runs.`
+             answer: `I could not find any funds matching "${args.search_query}" in the database. The mutual fund database may need to be synced first.`
            });
          }
          
-         // LLM found the matches, let's just return a systematic UI instruction directly!
-         // Or perform a second pass. For simplicity, since the prompt specifies:
-         // "...return results to the LLM so it can pick correct IDs before calling compare_assets"
          messages.push(choice.message);
          messages.push({
              role: 'tool',
