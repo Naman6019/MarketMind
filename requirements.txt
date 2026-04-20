@@ -1,11 +1,11 @@
 fastapi
 uvicorn
 httpx
-yfinance
+yfinance==0.2.36
 feedparser
 pytz
 supabase
 python-dotenv
-pandas
-numpy
+pandas==1.5.3
+numpy==1.24.4
 pydantic

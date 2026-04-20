@@ -1,6 +1,7 @@
 {
   "functions": {
     "api/index.py": {
+      "runtime": "python3.9",
       "excludeFiles": "{node_modules,.next,app,components,lib,store,.github,scripts}/**"
     }
   },
