@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/index.py": {
+      "excludeFiles": "{node_modules,.next,app,components,lib,store,.github,scripts}/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
