@@ -117,6 +117,24 @@ export default function ComparisonView({ ids, type }: { ids: string[], type: 'ST
                    <span className="text-[var(--accent-color)] font-medium">3Y Return</span>
                    <span className={data1.returns['3Y'] > 0 ? 'text-green-400' : 'text-red-400'}>{data1.returns['3Y']}%</span>
                  </div>
+                 {data1.riskMetrics && <>
+                   <div className="flex justify-between border-b border-white/5 pb-1 mt-2 pt-2">
+                     <span className="text-gray-400">Sharpe</span>
+                     <span className={data1.riskMetrics.sharpeRatio >= 1 ? 'text-green-400' : data1.riskMetrics.sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'}>{data1.riskMetrics.sharpeRatio}</span>
+                   </div>
+                   <div className="flex justify-between border-b border-white/5 pb-1">
+                     <span className="text-gray-400">Sortino</span>
+                     <span className={data1.riskMetrics.sortinoRatio >= 1 ? 'text-green-400' : data1.riskMetrics.sortinoRatio >= 0 ? 'text-yellow-400' : 'text-red-400'}>{data1.riskMetrics.sortinoRatio}</span>
+                   </div>
+                   <div className="flex justify-between border-b border-white/5 pb-1">
+                     <span className="text-gray-400">Std Dev</span>
+                     <span>{(data1.riskMetrics.stdDev * 100).toFixed(1)}%</span>
+                   </div>
+                   <div className="flex justify-between border-b border-white/5 pb-1">
+                     <span className="text-gray-400">Max Drawdown</span>
+                     <span className="text-red-400">-{(data1.riskMetrics.maxDrawdown * 100).toFixed(1)}%</span>
+                   </div>
+                 </>}
                </div>
              </div>
 
@@ -146,6 +164,24 @@ export default function ComparisonView({ ids, type }: { ids: string[], type: 'ST
                    <span className="text-[#fca311] font-medium">3Y Return</span>
                    <span className={data2.returns['3Y'] > 0 ? 'text-green-400' : 'text-red-400'}>{data2.returns['3Y']}%</span>
                  </div>
+                 {data2.riskMetrics && <>
+                   <div className="flex justify-between border-b border-white/5 pb-1 mt-2 pt-2">
+                     <span className="text-gray-400">Sharpe</span>
+                     <span className={data2.riskMetrics.sharpeRatio >= 1 ? 'text-green-400' : data2.riskMetrics.sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'}>{data2.riskMetrics.sharpeRatio}</span>
+                   </div>
+                   <div className="flex justify-between border-b border-white/5 pb-1">
+                     <span className="text-gray-400">Sortino</span>
+                     <span className={data2.riskMetrics.sortinoRatio >= 1 ? 'text-green-400' : data2.riskMetrics.sortinoRatio >= 0 ? 'text-yellow-400' : 'text-red-400'}>{data2.riskMetrics.sortinoRatio}</span>
+                   </div>
+                   <div className="flex justify-between border-b border-white/5 pb-1">
+                     <span className="text-gray-400">Std Dev</span>
+                     <span>{(data2.riskMetrics.stdDev * 100).toFixed(1)}%</span>
+                   </div>
+                   <div className="flex justify-between border-b border-white/5 pb-1">
+                     <span className="text-gray-400">Max Drawdown</span>
+                     <span className="text-red-400">-{(data2.riskMetrics.maxDrawdown * 100).toFixed(1)}%</span>
+                   </div>
+                 </>}
                </div>
              </div>
           </div>

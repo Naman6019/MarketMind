@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { fetchMFHistory, calculateCAGR } from '@/lib/mf/returns';
+import { fetchMFHistory, calculateCAGR, calculateRiskMetrics } from '@/lib/mf/returns';
 
 export async function GET(request: Request, context: { params: Promise<{ schemeCode: string }>}) {
   const { schemeCode } = await context.params;
@@ -23,6 +23,9 @@ export async function GET(request: Request, context: { params: Promise<{ schemeC
     const cagr3Y = calculateCAGR(history, 3);
     const cagr5Y = calculateCAGR(history, 5);
 
+    // Calculate risk metrics from full NAV history
+    const riskMetrics = calculateRiskMetrics(history);
+
     // Filter last 365 days of NAV history for charting
     // history is descending. We grab approximately the last 250 trading days
     const recentHistory = history.slice(0, 250).reverse().map(h => ({
@@ -37,6 +40,7 @@ export async function GET(request: Request, context: { params: Promise<{ schemeC
         '3Y': cagr3Y,
         '5Y': cagr5Y
       },
+      riskMetrics,
       chartData: recentHistory
     });
 

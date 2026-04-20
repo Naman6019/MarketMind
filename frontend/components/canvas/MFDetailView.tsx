@@ -88,6 +88,34 @@ export default function MFDetailView({ schemeCode }: { schemeCode?: string }) {
             </div>
           </div>
 
+          {data.riskMetrics && (
+            <div className="mb-6">
+              <h3 className="text-lg font-medium text-[var(--accent-color)] mb-3">Risk Metrics <span className="text-xs text-gray-500 font-normal">(based on full NAV history, RFR 6%)</span></h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                  <div className="text-gray-400 text-xs mb-1">Sharpe Ratio</div>
+                  <div className={`font-semibold text-sm ${data.riskMetrics.sharpeRatio >= 1 ? 'text-green-400' : data.riskMetrics.sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {data.riskMetrics.sharpeRatio}
+                  </div>
+                </div>
+                <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                  <div className="text-gray-400 text-xs mb-1">Sortino Ratio</div>
+                  <div className={`font-semibold text-sm ${data.riskMetrics.sortinoRatio >= 1 ? 'text-green-400' : data.riskMetrics.sortinoRatio >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {data.riskMetrics.sortinoRatio}
+                  </div>
+                </div>
+                <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                  <div className="text-gray-400 text-xs mb-1">Std Dev (Ann.)</div>
+                  <div className="font-semibold text-sm text-white">{(data.riskMetrics.stdDev * 100).toFixed(1)}%</div>
+                </div>
+                <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                  <div className="text-gray-400 text-xs mb-1">Max Drawdown</div>
+                  <div className="font-semibold text-sm text-red-400">-{(data.riskMetrics.maxDrawdown * 100).toFixed(1)}%</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="mb-6">
             <h3 className="text-lg font-medium text-[var(--accent-color)] mb-4">1Y NAV Trend (Rebased)</h3>
             <div className="h-64 w-full bg-black/20 rounded-xl p-2 border border-white/5">
