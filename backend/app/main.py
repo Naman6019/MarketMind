@@ -176,7 +176,6 @@ def is_market_open() -> bool:
 
 async def resolve_mf_ticker(entity_name: str) -> str:
     """Helper to map a name to a yfinance-compatible ticker or ISIN."""
-    # 1. Common mappings
     fallback_map = {
         "hdfc flexi cap": "0P0000XW94.BO",
         "parag parikh flexi cap": "0P0000YWL2.BO",
@@ -187,8 +186,6 @@ async def resolve_mf_ticker(entity_name: str) -> str:
     for key, ticker in fallback_map.items():
         if key in ent_lower:
             return ticker
-            
-    # 2. Try search in Supabase if ISIN or Ticker is stored (future)
     return None
 
 def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
@@ -427,7 +424,6 @@ Screener Results:
 
 @app.get("/api/trigger-fetch")
 async def trigger_eod_fetch(background_tasks: BackgroundTasks):
-    """Trigger background EOD fetching process via cron tool"""
     background_tasks.add_task(run_eod_fetch)
     return {"message": "Background fetch process triggered successfully."}
 
@@ -451,18 +447,32 @@ async def chat_endpoint(req: ChatRequest):
         entities = intent_info.get("compare_entities", [])
         comparison_results = {}
         for entity in entities:
-            # 1. Try resolving to a yfinance ticker first
+            # 1. Try yfinance ticker resolution first (for risk metrics)
             yf_ticker = await resolve_mf_ticker(entity)
             if yf_ticker:
                 comparison_results[entity] = fetch_quant_data(yf_ticker, period)
-            elif " " not in entity or "." in entity:
-                comparison_results[entity] = fetch_quant_data(entity, period)
             else:
-                # Fallback to Supabase meta
+                # 2. Fallback to Supabase Database (The 14,000 rows)
                 if supabase:
-                    res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').limit(1).execute()
-                    if res.data:
-                        comparison_results[entity] = {"name": res.data[0]['scheme_name'], "details": "Real-time fund data available in canvas deep-dive."}
+                    try:
+                        res = supabase.table('mutual_funds').select('*').ilike('scheme_name', f'%{entity}%').limit(1).execute()
+                        if res.data and len(res.data) > 0:
+                            fund = res.data[0]
+                            comparison_results[entity] = {
+                                "name": fund['scheme_name'],
+                                "nav": fund['nav'],
+                                "nav_date": fund['nav_date'],
+                                "category": fund['category'],
+                                "fund_house": fund['fund_house'],
+                                "expense_ratio": fund.get('expense_ratio', "N/A"),
+                                "aum": fund.get('aum', "N/A"),
+                                "source": "Supabase Database"
+                            }
+                        else:
+                            comparison_results[entity] = {"error": "Not found in database"}
+                    except Exception as e:
+                        logger.error(f"Supabase compare fetch error: {e}")
+                        comparison_results[entity] = {"error": "Database query failed"}
         quant_data = {"comparison": comparison_results}
         
     else:
@@ -471,6 +481,24 @@ async def chat_endpoint(req: ChatRequest):
             yf_ticker = await resolve_mf_ticker(ticker or req.query)
             final_ticker = yf_ticker if yf_ticker else ticker
             quant_data = fetch_quant_data(final_ticker, period)
+            
+            # If yfinance failed or ticker is missing, try Supabase for mutual fund match
+            if (not quant_data or "error" in quant_data) and supabase:
+                try:
+                    search_term = ticker or req.query
+                    res = supabase.table('mutual_funds').select('*').ilike('scheme_name', f'%{search_term}%').limit(1).execute()
+                    if res.data:
+                        fund = res.data[0]
+                        quant_data = {
+                            "name": fund['scheme_name'],
+                            "price": fund['nav'],
+                            "date": fund['nav_date'],
+                            "fund_house": fund['fund_house'],
+                            "aum": fund.get('aum', "N/A"),
+                            "expense_ratio": fund.get('expense_ratio', "N/A"),
+                            "source": "Supabase Database"
+                        }
+                except: pass
             
         if intent in ["news", "both"]:
             news_items = fetch_news(req.query, ticker)
