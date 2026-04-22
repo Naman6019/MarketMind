@@ -14,6 +14,7 @@ import yfinance as yf
 import feedparser
 from datetime import datetime, timedelta
 import pytz
+import numpy as np
 
 # Redirect yfinance cache to the writable /tmp directory
 os.environ["YFINANCE_CACHE_DIR"] = "/tmp/yfinance_cache"
@@ -58,17 +59,6 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.1-8b-instant"
 IST = pytz.timezone('Asia/Kolkata')
-
-NIFTY_50_TICKERS_TV = [
-    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "ITC", "SBIN", "BHARTIARTL",
-    "BAJFINANCE", "LARSEN", "KOTAKBANK", "HCLTECH", "AXISBANK", "MARUTI", "SUNPHARMA",
-    "TITAN", "ULTRACEMCO", "BAJAJFINSV", "ASIANPAINT", "NTPC", "M&M", "TATASTEEL",
-    "POWERGRID", "INDUSINDBK", "TATAMOTORS", "HINDUNILVR", "NESTLEIND", "GRASIM",
-    "TECHM", "WIPRO", "HINDALCO", "JSWSTEEL", "ADANIENT", "ADANIPORTS", "ONGC",
-    "BRITANNIA", "CIPLA", "APOLLOHOSP", "DIVISLAB", "DRREDDY", "BAJAJ-AUTO",
-    "TATACONSUM", "EICHERMOT", "COALINDIA", "HEROMOTOCO", "UPL", "BPCL", "LTIM",
-    "SBILIFE"
-]
 
 async def function_ollama_chat(messages, format="json", max_retries=2):
     groq_key = os.environ.get("GROQ_API_KEY")
@@ -142,15 +132,40 @@ If a filter is not mentioned, exclude it from screener_filters. Default historic
             logger.error(f"Router parsing error: {e}")
     return {"intent": "general", "ticker": None}
 
-def calculate_alpha_beta(stock_hist, nifty_hist):
-    if stock_hist.empty or nifty_hist.empty or len(stock_hist) < 2 or len(nifty_hist) < 2:
-        return "N/A"
+def calculate_beta(stock_returns, nifty_returns):
+    if len(stock_returns) < 2 or len(stock_returns) != len(nifty_returns):
+        return 1.0
+    try:
+        cov = np.cov(stock_returns, nifty_returns)[0][1]
+        var = np.var(nifty_returns)
+        if var == 0: return 1.0
+        return round(float(cov / var), 2)
+    except:
+        return 1.0
+
+def calculate_alpha_beta_v2(stock_hist, nifty_hist):
+    if stock_hist.empty or nifty_hist.empty or len(stock_hist) < 10 or len(nifty_hist) < 10:
+        return {"alpha": "N/A", "beta": "N/A"}
     
-    stock_return = (stock_hist['Close'].iloc[-1] - stock_hist['Close'].iloc[0]) / stock_hist['Close'].iloc[0] * 100
-    nifty_return = (nifty_hist['Close'].iloc[-1] - nifty_hist['Close'].iloc[0]) / nifty_hist['Close'].iloc[0] * 100
+    stock_returns = stock_hist['Close'].pct_change().dropna()
+    nifty_returns = nifty_hist['Close'].pct_change().dropna()
     
-    alpha = stock_return - nifty_return
-    return round(alpha, 2)
+    aligned = stock_returns.to_frame('stock').join(nifty_returns.to_frame('nifty'), how='inner')
+    
+    if len(aligned) < 5: return {"alpha": "N/A", "beta": "N/A"}
+    
+    beta = calculate_beta(aligned['stock'].tolist(), aligned['nifty'].tolist())
+    
+    stock_ret = ((stock_hist['Close'].iloc[-1] - stock_hist['Close'].iloc[0]) / stock_hist['Close'].iloc[0])
+    nifty_ret = ((nifty_hist['Close'].iloc[-1] - nifty_hist['Close'].iloc[0]) / nifty_hist['Close'].iloc[0])
+    
+    # Rf ~ 0.065 annualized -> dynamic scaling based on days
+    days = (stock_hist.index[-1] - stock_hist.index[0]).days
+    rf_period = (0.065 / 365) * days
+    
+    alpha = (stock_ret - (rf_period + beta * (nifty_ret - rf_period))) * 100
+    
+    return {"alpha": round(alpha, 2), "beta": beta}
 
 def is_market_open() -> bool:
     now = datetime.now(IST)
@@ -166,14 +181,11 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
     
     clean_ticker = ticker.replace('.NS', '').replace('.BO', '').replace('^NSEI', 'NIFTY')
     
-    # Use Supabase cache during off-market hours for simple queries to save latency/API limits
     if period in ["1d", "1mo"] and not is_market_open() and supabase:
-        logger.info(f"Market closed. Attempting to use Supabase snapshot for {clean_ticker}")
         try:
             res = supabase.table('nifty_stocks').select('*').eq('symbol', clean_ticker).execute()
             if res.data and len(res.data) > 0:
                 row = res.data[0]
-                logger.info("Supabase hit successful.")
                 return {
                     "timestamp": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST") + " (Supabase EOD Snapshot)",
                     "price": row.get("current_price", "N/A"),
@@ -186,21 +198,21 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
                     "rsi_14d": row.get("rsi", "N/A"),
                     "tv_recommendation": row.get("recommendation", "N/A")
                 }
-            logger.info("Ticker not in Supabase cache, fallback to yfinance.")
         except Exception as e:
-            logger.warning(f"Supabase failover error: {e}. Falling back to YFinance.")
+            logger.warning(f"Supabase failover error: {e}")
 
-    
     try:
         if period not in ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]:
-            period = "1y" # default fallback
+            period = "1y"
             
         stock = yf.Ticker(ticker)
         nifty = yf.Ticker("^NSEI")
         info = stock.info
         
         hist = stock.history(period=period)
-        nifty_hist = nifty.history(period=period)
+        calc_period = "3mo" if period in ["1d", "5d", "1mo"] else period
+        hist_calc = stock.history(period=calc_period)
+        nifty_hist = nifty.history(period=calc_period)
         
         if hist.empty:
             return {"error": "No recent data found"}
@@ -209,20 +221,20 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
         prev_close = info.get('previousClose', hist['Close'].iloc[-2] if len(hist) > 1 else current_price)
         change_pct = ((current_price - prev_close) / prev_close) * 100
         
+        risk_metrics = calculate_alpha_beta_v2(hist_calc, nifty_hist)
+        
         data = {
             "timestamp": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
             "price": current_price,
             "change_pct": round(change_pct, 2),
             "pe_ratio": info.get("trailingPE", "N/A"),
             "market_cap": info.get("marketCap", "N/A"),
-            "beta": info.get("beta", "N/A"),
-            "alpha_vs_nifty": calculate_alpha_beta(hist, nifty_hist),
+            "beta": risk_metrics["beta"],
+            "alpha_vs_nifty": risk_metrics["alpha"],
             "historical_period": period,
             "rsi_14d": "N/A",
             "tv_recommendation": "N/A"
         }
-        
-            
         return data
     except Exception as e:
         logger.error(f"Quant Error: {e}")
@@ -283,33 +295,25 @@ async def run_screener(filters: dict) -> list:
         return []
 
     try:
-        # Start DB Query
         query = supabase.table('nifty_stocks').select('*')
         
-        # Filter Logic
         min_pe = filters.get("min_pe")
         max_pe = filters.get("max_pe")
-        if min_pe is not None:
-            query = query.gte('pe_ratio', min_pe)
-        if max_pe is not None:
-            query = query.lte('pe_ratio', max_pe)
+        if min_pe is not None: query = query.gte('pe_ratio', min_pe)
+        if max_pe is not None: query = query.lte('pe_ratio', max_pe)
             
         rsi_range = filters.get("rsi_range", {})
         rsi_min = rsi_range.get("min")
         rsi_max = rsi_range.get("max")
-        if rsi_min is not None:
-            query = query.gte('rsi', rsi_min)
-        if rsi_max is not None:
-            query = query.lte('rsi', rsi_max)
+        if rsi_min is not None: query = query.gte('rsi', rsi_min)
+        if rsi_max is not None: query = query.lte('rsi', rsi_max)
             
         category = filters.get("category")
-        if category:
-            query = query.eq('category', category)
+        if category: query = query.eq('category', category)
             
         res = query.execute()
         raw_results = res.data
         
-        # Format for output
         formatted_results = []
         for r in raw_results:
             formatted_results.append({
@@ -324,10 +328,12 @@ async def run_screener(filters: dict) -> list:
         logger.error(f"Screener DB error: {e}")
         return []
 
-async def synthesis_response(query: str, intent_info: dict, quant_data: dict, news_data: list, screener_results: list = None) -> str:
+async def synthesis_response(query: str, intent_info: dict, quant_data: Any, news_data: list, screener_results: list = None) -> str:
     """Synthesis Core"""
     
-    if intent_info.get("intent") in ["general", "compare"]:
+    intent = intent_info.get("intent")
+    
+    if intent == "general":
         system_prompt_gen = """You are MarketMind, an expert AI stock market research assistant and financial educator.
 If the user asks basic educational questions (e.g., 'What is PE ratio?', 'Explain the metrics used here'), provide a clear, comprehensive, and beginner-friendly explanation. 
 Break down metrics like P/E Ratio (valuation), RSI (momentum/overbought/oversold), and moving averages carefully. Use bullet points and analogies if helpful. 
@@ -344,7 +350,7 @@ You are synthesizing data into a final response.
 
 ## SYNTHESIS RULES
 1. Open with a one-line market context statement.
-2. Present quantitative data or screener results in a clean, scannable markdown table.
+2. Present quantitative data, comparison data, or screener results in a clean, scannable markdown table.
 3. Follow with relevant news (if any), newest first. Including the [Sentiment] tag if provided.
 4. Close with a Trend Observation — Provide DEEP, ANALYTICAL reasoning here. Do not just regurgitate the numbers; explain exactly *why* the numbers matter together. For example, if P/E is uniquely low but RSI indicates it is oversold, hypothesize the market conditions causing this and provide strong supporting arguments. Make your analysis highly educational, uncovering the 'why' behind the metrics. Provide well-reasoned hypotheses, not shallow summaries.
 5. Append the complete mandatory disclaimer at the very end. Format it precisely as a blockquote using `> ⚠️ **Disclaimer:**`.
@@ -378,9 +384,10 @@ You are synthesizing data into a final response.
     
     context = f"""
 User Query: {query}
+Identified Intent: {intent}
 Identified Ticker: {intent_info.get('ticker')}
 
-Quant Data:
+Data Provided:
 {json.dumps(quant_data, indent=2)}
 
 News Data:
@@ -403,7 +410,6 @@ Screener Results:
 
 @app.get("/api/trigger-fetch")
 async def trigger_eod_fetch(background_tasks: BackgroundTasks):
-    """Trigger background EOD fetching process via cron tool"""
     background_tasks.add_task(run_eod_fetch)
     return {"message": "Background fetch process triggered successfully."}
 
@@ -423,6 +429,20 @@ async def chat_endpoint(req: ChatRequest):
         filters = intent_info.get("screener_filters", {})
         screener_results = await run_screener(filters)
         
+    elif intent == "compare":
+        entities = intent_info.get("compare_entities", [])
+        comparison_results = {}
+        for entity in entities:
+            # Check if it looks like a ticker
+            if " " not in entity or "." in entity:
+                comparison_results[entity] = fetch_quant_data(entity, period)
+            else:
+                if supabase:
+                    res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').limit(1).execute()
+                    if res.data:
+                        comparison_results[entity] = {"name": res.data[0]['scheme_name'], "details": "Real-time fund data available in canvas deep-dive."}
+        quant_data = {"comparison": comparison_results}
+        
     else:
         if intent in ["quant", "both"]:
             quant_data = fetch_quant_data(ticker, period)
@@ -440,7 +460,6 @@ async def chat_endpoint(req: ChatRequest):
         entities = intent_info.get("compare_entities", [])
         if len(entities) >= 2:
             resolved_ids = []
-            # Fallback mapping for common funds
             fallback_map = {
                 "hdfc flexi cap": "118955",
                 "parag parikh flexi cap": "122639",
@@ -451,25 +470,14 @@ async def chat_endpoint(req: ChatRequest):
             for entity in entities:
                 ent_lower = entity.lower()
                 resolved = False
-                
-                # 1. Try hardcoded fallback for common funds (Works even without DB)
                 for key, code in fallback_map.items():
                     if key in ent_lower:
-                        resolved_ids.append(code)
-                        resolved = True
-                        break
-                
+                        resolved_ids.append(code); resolved = True; break
                 if resolved: continue
-
-                # 2. Check if it's a stock ticker (Works even without DB)
                 if " " not in entity or ".ns" in ent_lower or ".bo" in ent_lower:
                     ticker_clean = entity.split()[0].upper()
-                    resolved_ids.append(ticker_clean)
-                    resolved = True
-                
+                    resolved_ids.append(ticker_clean); resolved = True
                 if resolved: continue
-
-                # 3. Try Supabase for Mutual Funds (Requires DB)
                 if supabase:
                     try:
                         res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').execute()
@@ -478,17 +486,12 @@ async def chat_endpoint(req: ChatRequest):
                             for row in res.data:
                                 name = row['scheme_name'].lower()
                                 if 'direct' in name and 'growth' in name:
-                                    best_match = row
-                                    break
+                                    best_match = row; break
                             resolved_ids.append(str(best_match['scheme_code']))
-                    except Exception as e:
-                        logger.error(f"Error resolving MF {entity}: {e}")
+                    except: pass
             
             if len(resolved_ids) >= 2:
-                response_json["system_action"] = {
-                    "type": "COMPARE",
-                    "ids": resolved_ids[:2]
-                }
+                response_json["system_action"] = {"type": "COMPARE", "ids": resolved_ids[:2]}
                 
     return response_json
 

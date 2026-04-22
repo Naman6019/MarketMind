@@ -14,7 +14,7 @@ import {
   calculateBeta, 
   calculateAlpha
 } from '../../lib/quantUtils';
-import { Info, TrendingUp, ShieldAlert, PieChart } from 'lucide-react';
+import { Info, TrendingUp, ShieldAlert, PieChart, Activity } from 'lucide-react';
 
 
 interface Props {
@@ -22,17 +22,22 @@ interface Props {
   schemeCodeB: string;
 }
 
-function MetricCard({ label, value, tooltip, icon: Icon }: { label: string, value: string | null, tooltip: string, icon?: any }) {
+function MetricCard({ label, value, tooltip, icon: Icon, subValue }: { label: string, value: string | null, tooltip: string, icon?: any, subValue?: string }) {
   return (
-    <div className="bg-white/5 hover:bg-white/10 transition-colors rounded-xl p-4 border border-white/10 relative group cursor-help shadow-sm">
-      <div className="flex items-center gap-2 mb-2">
-        {Icon && <Icon size={14} className="text-[var(--accent-color)]" />}
-        <div className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</div>
+    <div className="bg-white/5 hover:bg-white/10 transition-all duration-300 rounded-2xl p-5 border border-white/10 relative group cursor-help shadow-lg hover:border-[var(--accent-color)]/30">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {Icon && <Icon size={16} className="text-[var(--accent-color)]" />}
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">{label}</div>
+        </div>
       </div>
-      <div className="text-lg font-bold text-white">{value ?? '—'}</div>
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2.5 bg-gray-900 text-xs leading-relaxed text-gray-300 rounded-lg shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20 pointer-events-none border border-white/10">
+      <div className="flex flex-col gap-1">
+        <div className="text-2xl font-black text-white tracking-tight">{value ?? '—'}</div>
+        {subValue && <div className="text-[10px] text-gray-500 font-medium">{subValue}</div>}
+      </div>
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 p-3 bg-[#111] text-xs leading-relaxed text-gray-300 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 pointer-events-none border border-white/10 backdrop-blur-md">
         {tooltip}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-[#111]"></div>
       </div>
     </div>
   );
@@ -60,28 +65,22 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
     const cagr1Y = computeCAGR(navData, 1);
     const cagr3Y = computeCAGR(navData, 3);
     const cagr5Y = computeCAGR(navData, 5);
-
     const dailyReturns = toReturnsArray(navData);
     
     let beta: number | null = null;
     let alpha: number | null = null;
     
-    if (benchmark.data && navData.length > 30) {
+    if (benchmark.data && navData.length > 20) {
       const chronologicalFund = [...navData].reverse();
-      
-      // Date alignment with 1-day tolerance for market holidays/reporting lags
       const benchMap = new Map<string, number>();
       benchmark.data.forEach(d => benchMap.set(d.date, d.close));
 
       const getBenchPrice = (dateStr: string) => {
         if (benchMap.has(dateStr)) return benchMap.get(dateStr);
-        
-        // Try adjacent dates (+/- 1 day)
         const [d, m, y] = dateStr.split('-').map(Number);
         const date = new Date(Date.UTC(y, m - 1, d));
-        
-        for (let offset = -1; offset <= 1; offset++) {
-          if (offset === 0) continue;
+        // Try up to 3 days tolerance for reporting lags
+        for (let offset = -1; offset >= -3; offset--) {
           const adj = new Date(date);
           adj.setUTCDate(date.getUTCDate() + offset);
           const adjStr = `${String(adj.getUTCDate()).padStart(2, '0')}-${String(adj.getUTCMonth() + 1).padStart(2, '0')}-${adj.getUTCFullYear()}`;
@@ -105,13 +104,13 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
         }
       }
 
-      if (alignedFund.length > 20) {
+      if (alignedFund.length > 10) {
         beta = calculateBeta(alignedFund, alignedBench);
         const totalFundRet = alignedFund.reduce((acc, r) => acc * (1 + r), 1);
         const totalBenchRet = alignedBench.reduce((acc, r) => acc * (1 + r), 1);
         const years = alignedFund.length / 252;
         
-        if (years > 0.1) {
+        if (years > 0.05) {
           const fCAGR = Math.pow(totalFundRet, 1 / years) - 1;
           const bCAGR = Math.pow(totalBenchRet, 1 / years) - 1;
           alpha = calculateAlpha(fCAGR, bCAGR, beta) * 100;
@@ -119,85 +118,72 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
       }
     }
 
-    const sharpe = computeSharpe(dailyReturns);
-    const stdDev = computeStdDev(dailyReturns);
-
     return {
-      returns, cagr1Y, cagr3Y, cagr5Y, beta, alpha, sharpe, stdDev
+      returns, cagr1Y, cagr3Y, cagr5Y, beta, alpha,
+      sharpe: computeSharpe(dailyReturns),
+      stdDev: computeStdDev(dailyReturns)
     };
   }, [navData, benchmark.data]);
 
   if (!navData || !meta || !metrics) {
-    return <div className="flex-1 p-8 text-center text-gray-500 animate-pulse flex flex-col items-center justify-center min-h-[400px]">
-      <div className="w-8 h-8 border-2 border-white/20 border-t-[var(--accent-color)] rounded-full animate-spin mb-4"></div>
-      Crunching numbers...
-    </div>;
+    return (
+      <div className="flex-1 p-12 text-center text-gray-500 flex flex-col items-center justify-center min-h-[500px]">
+        <div className="relative w-16 h-16 mb-6">
+            <div className="absolute inset-0 border-4 border-white/5 rounded-full"></div>
+            <div className="absolute inset-0 border-4 border-t-[var(--accent-color)] rounded-full animate-spin"></div>
+        </div>
+        <p className="text-white font-medium animate-pulse">Analyzing Risk Vectors...</p>
+      </div>
+    );
   }
 
-  const latestNav = parseFloat(navData[0].nav).toFixed(4);
+  const latestNav = parseFloat(navData[0].nav).toFixed(2);
   const navDate = navData[0].date;
 
   const returnRow = (label: string, val: number | null, isCAGR = false) => (
-    <div className="flex justify-between items-center py-3 border-b border-white/5 text-sm hover:bg-white/5 px-2 rounded-lg transition-colors">
-      <span className="text-gray-400">{label}</span>
-      <span className={`font-medium ${val === null ? 'text-gray-500' : val > 0 ? 'text-green-400' : 'text-red-400'}`}>
+    <div className="flex justify-between items-center py-3.5 border-b border-white/5 text-sm group/row px-3 rounded-xl transition-all hover:bg-white/5">
+      <span className="text-gray-400 group-hover/row:text-white transition-colors">{label}</span>
+      <span className={`font-bold flex items-center gap-1.5 ${val === null ? 'text-gray-600' : val > 0 ? 'text-green-400' : 'text-red-400'}`}>
         {val !== null ? `${val > 0 ? '+' : ''}${val.toFixed(2)}%` : 'N/A'}
-        {isCAGR && val !== null && <span className="text-[10px] text-gray-500 ml-1.5 font-normal opacity-60">CAGR</span>}
+        {isCAGR && val !== null && <span className="text-[9px] px-1.5 py-0.5 bg-white/5 rounded text-gray-500 uppercase tracking-tighter">CAGR</span>}
       </span>
     </div>
   );
 
   return (
-    <div className="flex-1 flex flex-col gap-8 p-6">
-      <div className="flex flex-col gap-2">
-        <h3 className="text-xl font-bold truncate group relative cursor-default leading-tight" style={{ color: colorHex }}>
+    <div className="flex-1 flex flex-col gap-10 p-8">
+      <div className="flex flex-col gap-3">
+        <h3 className="text-2xl font-black truncate group relative cursor-default leading-tight tracking-tight" style={{ color: colorHex }}>
           <span className="truncate block" title={meta.scheme_name}>{meta.scheme_name}</span>
         </h3>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 bg-white/5 px-2.5 py-1 rounded-full border border-white/10">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white bg-white/10 px-3 py-1 rounded-lg border border-white/10">
             {meta.scheme_category}
           </span>
+          <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>
+          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{meta.fund_house}</span>
         </div>
       </div>
 
-      <div className="bg-black/20 rounded-2xl p-6 border border-white/5 shadow-xl">
-        <div className="flex items-center gap-2 mb-4">
-          <Info size={16} className="text-blue-400" />
-          <h4 className="text-sm font-semibold text-white uppercase tracking-wider">Fund Overview</h4>
-        </div>
-        <div className="grid grid-cols-2 gap-y-5 gap-x-6 text-sm">
-          <div className="flex flex-col gap-1">
-            <div className="text-[11px] font-medium text-gray-500 uppercase tracking-tight">Fund House</div>
-            <div className="text-gray-200 font-medium truncate" title={meta.fund_house}>{meta.fund_house}</div>
+      <div className="grid grid-cols-2 gap-4">
+          <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex flex-col gap-1">
+              <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Latest NAV</div>
+              <div className="text-xl font-bold text-white tracking-tighter">₹{latestNav}</div>
+              <div className="text-[10px] text-gray-600 font-medium">As of {navDate}</div>
           </div>
-          <div className="flex flex-col gap-1">
-            <div className="text-[11px] font-medium text-gray-500 uppercase tracking-tight">Current NAV</div>
-            <div className="text-gray-200 font-medium flex items-baseline gap-1.5">
-              ₹{latestNav} 
-              <span className="text-[10px] text-gray-500 font-normal">({navDate})</span>
-            </div>
+          <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex flex-col gap-1">
+              <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Expense Ratio</div>
+              <div className="text-xl font-bold text-[var(--accent-color)] tracking-tighter">
+                  {extraMeta?.expense_ratio ? `${extraMeta.expense_ratio}%` : 'TBD'}
+              </div>
+              <div className="text-[10px] text-gray-600 font-medium leading-none">Syncing monthly...</div>
           </div>
-          <div className="flex flex-col gap-1">
-            <div className="text-[11px] font-medium text-gray-500 uppercase tracking-tight flex items-center gap-1.5">
-              Expense Ratio
-              <Info size={10} className="text-gray-600" />
-            </div>
-            <div className="text-[var(--accent-color)] font-bold">{extraMeta?.expense_ratio ? `${extraMeta.expense_ratio}%` : '—'}</div>
-          </div>
-          <div className="flex flex-col gap-1">
-            <div className="text-[11px] font-medium text-gray-500 uppercase tracking-tight flex items-center gap-1.5">
-              AUM
-              <Info size={10} className="text-gray-600" />
-            </div>
-            <div className="text-white font-bold">{extraMeta?.aum ? `₹${extraMeta.aum} Cr` : '—'}</div>
-          </div>
-        </div>
       </div>
 
-      <div className="bg-black/20 rounded-2xl p-6 border border-white/5 shadow-xl">
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp size={16} className="text-green-400" />
-          <h4 className="text-sm font-semibold text-white uppercase tracking-wider">Returns Analysis</h4>
+      <div className="bg-black/20 rounded-3xl p-7 border border-white/10 shadow-2xl">
+        <div className="flex items-center gap-3 mb-6">
+          <TrendingUp size={18} className="text-green-400" />
+          <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Absolute Performance</h4>
         </div>
         <div className="space-y-1">
           {returnRow('1 Month', metrics.returns['1M'])}
@@ -208,52 +194,49 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
         </div>
       </div>
 
-      <div className="bg-black/20 rounded-2xl p-6 border border-white/5 shadow-xl">
-        <div className="flex items-center gap-2 mb-5">
-          <ShieldAlert size={16} className="text-red-400" />
-          <h4 className="text-sm font-semibold text-white uppercase tracking-wider">Risk Profile</h4>
+      <div className="bg-black/20 rounded-3xl p-7 border border-white/10 shadow-2xl">
+        <div className="flex items-center gap-3 mb-6">
+          <ShieldAlert size={18} className="text-red-400" />
+          <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Risk Quant</h4>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <MetricCard 
             label="Alpha" 
             value={metrics.alpha !== null ? (metrics.alpha > 0 ? '+' : '') + metrics.alpha.toFixed(2) + '%' : null} 
-            tooltip="Excess return over benchmark (Nifty 50). Positive alpha indicates the fund beat the market after adjusting for risk." 
+            tooltip="Jensen's Alpha: Excess return over benchmark (Nifty 50) after risk adjustment. Positive means outperformance." 
             icon={TrendingUp}
+            subValue="vs NIFTY 50"
           />
           <MetricCard 
             label="Beta" 
             value={metrics.beta !== null ? metrics.beta.toFixed(2) : null} 
-            tooltip="Sensitivity to market moves. Beta of 1.0 means it moves with the market; >1.0 is more volatile." 
-            icon={TrendingUp}
+            tooltip="Systematic Risk: Volatility relative to the market. 1.0 = tracks market, >1.0 = high sensitivity." 
+            icon={Activity}
+            subValue="Volatility Coeff."
           />
           <MetricCard 
             label="Sharpe" 
             value={metrics.sharpe !== null ? metrics.sharpe.toFixed(2) : null} 
-            tooltip="Risk-adjusted return. Higher is better, indicating more return per unit of volatility." 
+            tooltip="Risk-adjusted Return: Efficiency of the fund in generating returns per unit of total risk." 
             icon={ShieldAlert}
+            subValue="Efficiency"
           />
           <MetricCard 
             label="Volatility" 
             value={metrics.stdDev !== null ? metrics.stdDev.toFixed(2) + '%' : null} 
-            tooltip="Annualized Standard Deviation. Measures how much the NAV fluctuates from its average." 
-            icon={ShieldAlert}
+            tooltip="Standard Deviation: The degree to which the NAV fluctuates. Lower is more stable." 
+            icon={Activity}
+            subValue="Ann. Std Dev"
           />
         </div>
       </div>
 
-      <div className="bg-black/20 rounded-2xl p-6 border border-white/5 shadow-xl">
-        <div className="flex items-center gap-2 mb-4">
-          <PieChart size={16} className="text-purple-400" />
-          <h4 className="text-sm font-semibold text-white uppercase tracking-wider">Portfolio Insights</h4>
-        </div>
-        <div className="flex flex-col items-center justify-center py-6 text-center">
-          <p className="text-gray-500 text-[11px] italic leading-relaxed max-w-[240px]">
-            Holdings & sector weights are refreshed monthly from AMFI disclosures.
+      <div className="bg-black/40 rounded-3xl p-8 border border-white/5 border-dashed text-center">
+          <PieChart size={24} className="text-gray-700 mx-auto mb-4" />
+          <div className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-2">Portfolio Under Sync</div>
+          <p className="text-[10px] text-gray-600 leading-relaxed max-w-[200px] mx-auto">
+            Full sector allocation and stock concentration analysis is being integrated from latest AMFI fact sheets.
           </p>
-          <div className="mt-4 text-[10px] text-[var(--accent-color)] font-medium bg-[var(--accent-color)]/5 px-3 py-1.5 rounded-lg border border-[var(--accent-color)]/10">
-            Full Portfolio Deep-Dive Coming Soon
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -261,14 +244,18 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
 
 export default function FundDetailsPanel({ schemeCodeA, schemeCodeB }: Props) {
   return (
-    <div className="flex flex-col relative w-full max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row relative">
+    <div className="flex flex-col relative w-full max-w-7xl mx-auto mb-20">
+      <div className="flex flex-col md:flex-row relative items-stretch">
         <FundColumn schemeCode={schemeCodeA} colorHex="#3B82F6" />
-        <div className="hidden md:flex flex-col items-center justify-center px-2 py-12">
-          <div className="w-[1px] h-full bg-gradient-to-b from-transparent via-white/10 to-transparent"></div>
-          <div className="my-4 text-[10px] font-bold text-gray-600 bg-black p-1 rounded border border-white/5">VS</div>
-          <div className="w-[1px] h-full bg-gradient-to-b from-transparent via-white/10 to-transparent"></div>
+        
+        <div className="flex md:flex-col items-center justify-center p-6 relative">
+          <div className="hidden md:block absolute top-0 bottom-0 left-1/2 w-[1px] bg-gradient-to-b from-transparent via-white/10 to-transparent"></div>
+          <div className="relative z-10 w-12 h-12 bg-[#0a0a0a] border border-white/10 rounded-full flex items-center justify-center text-[10px] font-black text-gray-500 shadow-2xl ring-8 ring-black/50">
+            VS
+          </div>
+          <div className="md:hidden flex-1 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent ml-4"></div>
         </div>
+
         <FundColumn schemeCode={schemeCodeB} colorHex="#F97316" />
       </div>
     </div>

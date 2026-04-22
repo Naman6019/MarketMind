@@ -64,7 +64,7 @@ export default function DashboardLayout() {
             {!isSidebarVisible && (
               <button 
                 onClick={() => setIsSidebarVisible(true)}
-                className="absolute top-4 left-4 z-50 bg-[#1f2833] border border-white/10 p-2 rounded-lg text-white hover:bg-white/10 transition-colors shadow-lg"
+                className="absolute top-[72px] left-4 z-50 bg-[#1f2833] border border-white/10 p-2 rounded-lg text-white hover:bg-white/20 transition-all shadow-xl hover:scale-105"
                 title="Show Sidebar"
               >
                 <PanelLeftOpen size={20} />
