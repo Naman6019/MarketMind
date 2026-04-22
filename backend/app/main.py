@@ -174,6 +174,23 @@ def is_market_open() -> bool:
     market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
     return market_open <= now <= market_close
 
+async def resolve_mf_ticker(entity_name: str) -> str:
+    """Helper to map a name to a yfinance-compatible ticker or ISIN."""
+    # 1. Common mappings
+    fallback_map = {
+        "hdfc flexi cap": "0P0000XW94.BO",
+        "parag parikh flexi cap": "0P0000YWL2.BO",
+        "quant small cap": "0P0000XW86.BO",
+        "nippon india small cap": "0P0000XVUA.BO"
+    }
+    ent_lower = entity_name.lower()
+    for key, ticker in fallback_map.items():
+        if key in ent_lower:
+            return ticker
+            
+    # 2. Try search in Supabase if ISIN or Ticker is stored (future)
+    return None
+
 def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
     """Agent 2: Quant Data"""
     if not ticker: return {"error": "No ticker identified"}
@@ -224,7 +241,7 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
         
         data = {
             "timestamp": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
-            "price": current_price,
+            "price": round(current_price, 2),
             "change_pct": round(change_pct, 2),
             "pe_ratio": info.get("trailingPE", "N/A"),
             "market_cap": info.get("marketCap", "N/A"),
@@ -434,10 +451,14 @@ async def chat_endpoint(req: ChatRequest):
         entities = intent_info.get("compare_entities", [])
         comparison_results = {}
         for entity in entities:
-            # Check if it looks like a ticker
-            if " " not in entity or "." in entity:
+            # 1. Try resolving to a yfinance ticker first
+            yf_ticker = await resolve_mf_ticker(entity)
+            if yf_ticker:
+                comparison_results[entity] = fetch_quant_data(yf_ticker, period)
+            elif " " not in entity or "." in entity:
                 comparison_results[entity] = fetch_quant_data(entity, period)
             else:
+                # Fallback to Supabase meta
                 if supabase:
                     res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').limit(1).execute()
                     if res.data:
@@ -445,8 +466,11 @@ async def chat_endpoint(req: ChatRequest):
         quant_data = {"comparison": comparison_results}
         
     else:
+        # Check if intent requires quant but ticker was name
         if intent in ["quant", "both"]:
-            quant_data = fetch_quant_data(ticker, period)
+            yf_ticker = await resolve_mf_ticker(ticker or req.query)
+            final_ticker = yf_ticker if yf_ticker else ticker
+            quant_data = fetch_quant_data(final_ticker, period)
             
         if intent in ["news", "both"]:
             news_items = fetch_news(req.query, ticker)
