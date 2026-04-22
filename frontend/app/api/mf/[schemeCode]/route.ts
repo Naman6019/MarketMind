@@ -27,11 +27,15 @@ export async function GET(request: Request, context: { params: Promise<{ schemeC
     const riskMetrics = calculateRiskMetrics(history);
 
     // Filter last 365 days of NAV history for charting
-    // history is descending. We grab approximately the last 250 trading days
     const recentHistory = history.slice(0, 250).reverse().map(h => ({
       date: h.date,
       value: parseFloat(h.nav)
     }));
+
+    // --- FALLBACK FOR AUM/EXPENSE RATIO ---
+    // If they are null in Supabase, we could theoretically fetch them from yfinance here.
+    // But since this is a serverless function, we should keep it fast.
+    // For now, we will return what we have.
 
     return NextResponse.json({
       details: mfDetails,

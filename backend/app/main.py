@@ -144,7 +144,7 @@ def calculate_beta(stock_returns, nifty_returns):
         return 1.0
 
 def calculate_alpha_beta_v2(stock_hist, nifty_hist):
-    if stock_hist.empty or nifty_hist.empty or len(stock_hist) < 10 or len(nifty_hist) < 10:
+    if stock_hist.empty or nifty_hist.empty or len(stock_hist) < 5 or len(nifty_hist) < 5:
         return {"alpha": "N/A", "beta": "N/A"}
     
     stock_returns = stock_hist['Close'].pct_change().dropna()
@@ -152,14 +152,13 @@ def calculate_alpha_beta_v2(stock_hist, nifty_hist):
     
     aligned = stock_returns.to_frame('stock').join(nifty_returns.to_frame('nifty'), how='inner')
     
-    if len(aligned) < 5: return {"alpha": "N/A", "beta": "N/A"}
+    if len(aligned) < 2: return {"alpha": "N/A", "beta": "N/A"}
     
     beta = calculate_beta(aligned['stock'].tolist(), aligned['nifty'].tolist())
     
     stock_ret = ((stock_hist['Close'].iloc[-1] - stock_hist['Close'].iloc[0]) / stock_hist['Close'].iloc[0])
     nifty_ret = ((nifty_hist['Close'].iloc[-1] - nifty_hist['Close'].iloc[0]) / nifty_hist['Close'].iloc[0])
     
-    # Rf ~ 0.065 annualized -> dynamic scaling based on days
     days = (stock_hist.index[-1] - stock_hist.index[0]).days
     rf_period = (0.065 / 365) * days
     
@@ -210,7 +209,7 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
         info = stock.info
         
         hist = stock.history(period=period)
-        calc_period = "3mo" if period in ["1d", "5d", "1mo"] else period
+        calc_period = "1y" if period in ["1d", "5d", "1mo", "3mo", "6mo"] else period
         hist_calc = stock.history(period=calc_period)
         nifty_hist = nifty.history(period=calc_period)
         
@@ -233,7 +232,8 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
             "alpha_vs_nifty": risk_metrics["alpha"],
             "historical_period": period,
             "rsi_14d": "N/A",
-            "tv_recommendation": "N/A"
+            "tv_recommendation": "N/A",
+            "aum": info.get("totalAssets", "N/A")
         }
         return data
     except Exception as e:
@@ -410,6 +410,7 @@ Screener Results:
 
 @app.get("/api/trigger-fetch")
 async def trigger_eod_fetch(background_tasks: BackgroundTasks):
+    """Trigger background EOD fetching process via cron tool"""
     background_tasks.add_task(run_eod_fetch)
     return {"message": "Background fetch process triggered successfully."}
 
