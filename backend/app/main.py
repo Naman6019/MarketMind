@@ -103,6 +103,7 @@ async def route_query(query: str) -> dict:
     """Agent 1: Router"""
     system_prompt = """You are the Router Agent for QuantPulse. Classify the user query intent.
 If the query asks to filter, list, or screen stocks (e.g., "Find stocks with PE < 20", "Show me oversold stocks"), set intent to 'screener' and populate 'screener_filters'.
+If the query asks to compare two or more mutual funds or stocks, set intent to 'compare' and populate 'compare_entities' with a list of their names (e.g. ["HDFC Flexi Cap", "Parag Parikh Flexi Cap"]).
 Otherwise, use 'quant', 'news', 'both', or 'general'.
 Extract primary NSE/BSE ticker explicitly (e.g. RELIANCE.NS, ^NSEI for Nifty). 
 
@@ -110,7 +111,7 @@ Check for historical period mentions (e.g., '1m', '1y') and sentiment mentions.
 
 Output strict JSON only format:
 {
-  "intent": "quant|news|both|general|screener",
+  "intent": "quant|news|both|general|screener|compare",
   "ticker": "TICKER.NS",
   "historical_period": "1mo|1y|5y|max", 
   "sentiment_flag": true/false,
@@ -118,7 +119,8 @@ Output strict JSON only format:
     "min_pe": 0,
     "max_pe": 100,
     "rsi_range": {"min": 0, "max": 100}
-  }
+  },
+  "compare_entities": ["Asset 1 Name", "Asset 2 Name"]
 }
 If a filter is not mentioned, exclude it from screener_filters. Default historical_period to "1mo" if not mentioned. Default sentiment_flag to false unless news sentiment is requested.
     """
@@ -315,7 +317,7 @@ async def run_screener(filters: dict) -> list:
 async def synthesis_response(query: str, intent_info: dict, quant_data: dict, news_data: list, screener_results: list = None) -> str:
     """Synthesis Core"""
     
-    if intent_info.get("intent") == "general":
+    if intent_info.get("intent") in ["general", "compare"]:
         system_prompt_gen = """You are QuantPulse, an expert AI stock market research assistant and financial educator.
 If the user asks basic educational questions (e.g., 'What is PE ratio?', 'Explain the metrics used here'), provide a clear, comprehensive, and beginner-friendly explanation. 
 Break down metrics like P/E Ratio (valuation), RSI (momentum/overbought/oversold), and moving averages carefully. Use bullet points and analogies if helpful. 
@@ -422,7 +424,34 @@ async def chat_endpoint(req: ChatRequest):
             news_data = news_items
             
     final_answer = await synthesis_response(req.query, intent_info, quant_data, news_data, screener_results)
-    return {"answer": final_answer, "debug_intent": intent_info}
+    response_json = {"answer": final_answer, "debug_intent": intent_info}
+    
+    if intent == "compare":
+        entities = intent_info.get("compare_entities", [])
+        if len(entities) >= 2:
+            resolved_ids = []
+            if supabase:
+                for entity in entities:
+                    try:
+                        res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').execute()
+                        if res.data and len(res.data) > 0:
+                            best_match = res.data[0]
+                            for row in res.data:
+                                name = row['scheme_name'].lower()
+                                if 'direct' in name and 'growth' in name:
+                                    best_match = row
+                                    break
+                            resolved_ids.append(str(best_match['scheme_code']))
+                    except Exception as e:
+                        logger.error(f"Error resolving MF {entity}: {e}")
+            
+            if len(resolved_ids) >= 2:
+                response_json["system_action"] = {
+                    "type": "COMPARE",
+                    "ids": resolved_ids[:2]
+                }
+                
+    return response_json
 
 if __name__ == "__main__":
     import uvicorn

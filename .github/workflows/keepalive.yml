@@ -9,10 +9,10 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping QuantPulse API
+      - name: Ping MarketMind API
         run: |
           response=$(curl -s -o /dev/null -w "%{http_code}" \
-            https://quantpulse-api.onrender.com/health)
+            https://marketmind-hz03.onrender.com/health)
           echo "Health check status: $response"
           if [ "$response" != "200" ]; then
             echo "WARNING: API returned $response"
