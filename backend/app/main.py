@@ -430,20 +430,39 @@ async def chat_endpoint(req: ChatRequest):
         entities = intent_info.get("compare_entities", [])
         if len(entities) >= 2:
             resolved_ids = []
+            # Fallback mapping for common funds
+            fallback_map = {
+                "hdfc flexi cap": "118955",
+                "parag parikh flexi cap": "122639",
+                "quant small cap": "120847",
+                "nippon india small cap": "119332"
+            }
+            
             if supabase:
                 for entity in entities:
-                    try:
-                        res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').execute()
-                        if res.data and len(res.data) > 0:
-                            best_match = res.data[0]
-                            for row in res.data:
-                                name = row['scheme_name'].lower()
-                                if 'direct' in name and 'growth' in name:
-                                    best_match = row
-                                    break
-                            resolved_ids.append(str(best_match['scheme_code']))
-                    except Exception as e:
-                        logger.error(f"Error resolving MF {entity}: {e}")
+                    ent_lower = entity.lower()
+                    resolved = False
+                    
+                    # Try hardcoded fallback first for speed/reliability
+                    for key, code in fallback_map.items():
+                        if key in ent_lower:
+                            resolved_ids.append(code)
+                            resolved = True
+                            break
+                    
+                    if not resolved:
+                        try:
+                            res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').execute()
+                            if res.data and len(res.data) > 0:
+                                best_match = res.data[0]
+                                for row in res.data:
+                                    name = row['scheme_name'].lower()
+                                    if 'direct' in name and 'growth' in name:
+                                        best_match = row
+                                        break
+                                resolved_ids.append(str(best_match['scheme_code']))
+                        except Exception as e:
+                            logger.error(f"Error resolving MF {entity}: {e}")
             
             if len(resolved_ids) >= 2:
                 response_json["system_action"] = {
