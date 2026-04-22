@@ -6,10 +6,11 @@ interface CanvasState {
   activeView: ViewMode;
   selectedIds: string[];
   isCanvasOpen: boolean;
-  setView: (view: ViewMode) => void;
+  auxiliaryData: any; // Data passed from chat to canvas
+  setView: (view: ViewMode, data?: any) => void;
   setIds: (ids: string[]) => void;
   toggleCanvas: () => void;
-  openCanvas: () => void;
+  openCanvas: (data?: any) => void;
   closeCanvas: () => void;
 }
 
@@ -17,9 +18,10 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   activeView: 'NONE',
   selectedIds: [],
   isCanvasOpen: false,
-  setView: (view) => set({ activeView: view }),
+  auxiliaryData: null,
+  setView: (view, data = null) => set({ activeView: view, auxiliaryData: data }),
   setIds: (ids) => set({ selectedIds: ids }),
   toggleCanvas: () => set((state) => ({ isCanvasOpen: !state.isCanvasOpen })),
-  openCanvas: () => set({ isCanvasOpen: true }),
-  closeCanvas: () => set({ isCanvasOpen: false }),
+  openCanvas: (data = null) => set({ isCanvasOpen: true, auxiliaryData: data }),
+  closeCanvas: () => set({ isCanvasOpen: false, auxiliaryData: null }),
 }));

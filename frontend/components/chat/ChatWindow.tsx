@@ -68,8 +68,8 @@ export default function ChatWindow() {
       if (data.system_action) {
         if (data.system_action.type === 'COMPARE') {
             setIds(data.system_action.ids);
-            setView('COMPARISON');
-            openCanvas();
+            setView('COMPARISON', data); // Pass raw data containing quant/comparison bits
+            openCanvas(data);
         }
       }
       

@@ -14,6 +14,7 @@ import {
   calculateBeta, 
   calculateAlpha
 } from '../../lib/quantUtils';
+import { useCanvasStore } from '@/store/useCanvasStore';
 import { Info, TrendingUp, ShieldAlert, PieChart, Activity } from 'lucide-react';
 
 
@@ -47,6 +48,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
   const { navData, meta } = useFundData(schemeCode);
   const benchmark = useBenchmarkData();
   const [extraMeta, setExtraMeta] = useState<any>(null);
+  const { auxiliaryData } = useCanvasStore();
 
   useEffect(() => {
     if (!schemeCode) return;
@@ -69,8 +71,25 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
     
     let beta: number | null = null;
     let alpha: number | null = null;
+    let precomputedAum: string | null = null;
+
+    // --- USE PRE-FETCHED DATA FROM CHAT IF AVAILABLE ---
+    if (auxiliaryData?.comparison) {
+       // Look for this fund in comparison data
+       // Names might match partially
+       const fundName = meta?.scheme_name?.toLowerCase();
+       for (const [key, val] of Object.entries(auxiliaryData.comparison)) {
+          if (fundName?.includes(key.toLowerCase()) || key.toLowerCase().includes(fundName || '')) {
+             const data = val as any;
+             if (data.beta && data.beta !== 'N/A') beta = parseFloat(data.beta);
+             if (data.alpha_vs_nifty && data.alpha_vs_nifty !== 'N/A') alpha = parseFloat(data.alpha_vs_nifty);
+             if (data.aum && data.aum !== 'N/A') precomputedAum = data.aum.toString();
+          }
+       }
+    }
     
-    if (benchmark.data && navData.length > 20) {
+    // --- FALLBACK TO LOCAL CALCULATION ---
+    if ((beta === null || alpha === null) && benchmark.data && navData.length > 20) {
       const chronologicalFund = [...navData].reverse();
       const benchMap = new Map<string, number>();
       benchmark.data.forEach(d => benchMap.set(d.date, d.close));
@@ -79,7 +98,6 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
         if (benchMap.has(dateStr)) return benchMap.get(dateStr);
         const [d, m, y] = dateStr.split('-').map(Number);
         const date = new Date(Date.UTC(y, m - 1, d));
-        // Try up to 3 days tolerance for reporting lags
         for (let offset = -1; offset >= -3; offset--) {
           const adj = new Date(date);
           adj.setUTCDate(date.getUTCDate() + offset);
@@ -105,25 +123,28 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
       }
 
       if (alignedFund.length > 10) {
-        beta = calculateBeta(alignedFund, alignedBench);
-        const totalFundRet = alignedFund.reduce((acc, r) => acc * (1 + r), 1);
-        const totalBenchRet = alignedBench.reduce((acc, r) => acc * (1 + r), 1);
-        const years = alignedFund.length / 252;
-        
-        if (years > 0.05) {
-          const fCAGR = Math.pow(totalFundRet, 1 / years) - 1;
-          const bCAGR = Math.pow(totalBenchRet, 1 / years) - 1;
-          alpha = calculateAlpha(fCAGR, bCAGR, beta) * 100;
+        const calcBeta = calculateBeta(alignedFund, alignedBench);
+        if (beta === null) beta = calcBeta;
+
+        if (alpha === null) {
+          const totalFundRet = alignedFund.reduce((acc, r) => acc * (1 + r), 1);
+          const totalBenchRet = alignedBench.reduce((acc, r) => acc * (1 + r), 1);
+          const years = alignedFund.length / 252;
+          if (years > 0.05) {
+            const fCAGR = Math.pow(totalFundRet, 1 / years) - 1;
+            const bCAGR = Math.pow(totalBenchRet, 1 / years) - 1;
+            alpha = calculateAlpha(fCAGR, bCAGR, beta) * 100;
+          }
         }
       }
     }
 
     return {
-      returns, cagr1Y, cagr3Y, cagr5Y, beta, alpha,
+      returns, cagr1Y, cagr3Y, cagr5Y, beta, alpha, precomputedAum,
       sharpe: computeSharpe(dailyReturns),
       stdDev: computeStdDev(dailyReturns)
     };
-  }, [navData, benchmark.data]);
+  }, [navData, benchmark.data, auxiliaryData, meta]);
 
   if (!navData || !meta || !metrics) {
     return (
@@ -172,9 +193,9 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
               <div className="text-[10px] text-gray-600 font-medium">As of {navDate}</div>
           </div>
           <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex flex-col gap-1">
-              <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Expense Ratio</div>
+              <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total AUM</div>
               <div className="text-xl font-bold text-[var(--accent-color)] tracking-tighter">
-                  {extraMeta?.expense_ratio ? `${extraMeta.expense_ratio}%` : 'TBD'}
+                  {metrics.precomputedAum ? `₹${metrics.precomputedAum} Cr` : (extraMeta?.aum ? `₹${extraMeta.aum} Cr` : 'TBD')}
               </div>
               <div className="text-[10px] text-gray-600 font-medium leading-none">Syncing monthly...</div>
           </div>
