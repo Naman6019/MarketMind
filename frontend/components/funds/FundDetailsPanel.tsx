@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useFundData } from '../../hooks/useFundData';
 import { useBenchmarkData } from '../../hooks/useBenchmarkData';
 import { 
@@ -42,6 +42,17 @@ function MetricCard({ label, value, tooltip }: { label: string, value: string | 
 function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: string }) {
   const { navData, meta } = useFundData(schemeCode);
   const benchmark = useBenchmarkData();
+  const [extraMeta, setExtraMeta] = useState<any>(null);
+
+  useEffect(() => {
+    if (!schemeCode) return;
+    fetch(`/api/mf/${schemeCode}`)
+      .then(res => res.json())
+      .then(json => {
+        if (json.details) setExtraMeta(json.details);
+      })
+      .catch(err => console.error("Error fetching extra meta:", err));
+  }, [schemeCode]);
 
   const metrics = useMemo(() => {
     if (!navData) return null;
@@ -62,16 +73,17 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
       const { fundReturns, benchReturns } = alignData(chronologicalFund, benchmark.data);
       
       if (fundReturns.length > 20) {
+        // Use aligned returns for Beta
         beta = calculateBeta(fundReturns, benchReturns);
         
-        // Calculate Alpha using 3-year CAGR if possible, otherwise use 1-year
-        const is3Y = !!cagr3Y;
-        const fCAGR = is3Y ? cagr3Y! / 100 : (cagr1Y ? cagr1Y / 100 : null);
+        // Use aligned returns for Alpha calculation to ensure exact period match
+        const totalFundRet = fundReturns.reduce((acc, r) => acc * (1 + r), 1);
+        const totalBenchRet = benchReturns.reduce((acc, r) => acc * (1 + r), 1);
         
-        // Compute benchmark CAGR for the same period
-        const bCAGR = calculateBenchCAGR(benchmark.data, is3Y ? 3 : 1);
-        
-        if (fCAGR !== null && bCAGR !== null && beta !== null) {
+        const years = fundReturns.length / 252;
+        if (years > 0.1) {
+          const fCAGR = Math.pow(totalFundRet, 1 / years) - 1;
+          const bCAGR = Math.pow(totalBenchRet, 1 / years) - 1;
           alpha = calculateAlpha(fCAGR, bCAGR, beta) * 100;
         }
       }
@@ -101,14 +113,6 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
       </span>
     </div>
   );
-
-  // Placeholder data for pie chart since mfapi doesn't provide it
-  const placeholderSectors = [
-    { name: 'Financials', value: 30 },
-    { name: 'IT', value: 20 },
-    { name: 'Consumer', value: 15 },
-    { name: 'Others', value: 35 }
-  ];
 
   return (
     <div className="flex-1 flex flex-col gap-6 p-4">
@@ -142,7 +146,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
                 </div>
               </div>
             </div>
-            <div className="text-gray-200">—</div>
+            <div className="text-gray-200">{extraMeta?.expense_ratio ? `${extraMeta.expense_ratio}%` : '—'}</div>
           </div>
           <div>
             <div className="text-xs text-gray-500 flex items-center gap-1">
@@ -154,7 +158,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
                 </div>
               </div>
             </div>
-            <div className="text-gray-200">—</div>
+            <div className="text-gray-200">{extraMeta?.aum ? `₹${extraMeta.aum} Cr` : '—'}</div>
           </div>
         </div>
       </div>

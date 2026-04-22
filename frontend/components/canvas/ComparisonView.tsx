@@ -47,18 +47,18 @@ export default function ComparisonView({ ids, type }: Props) {
 
   return (
     <div className="comparison-detail p-6 bg-[var(--panel-bg)] rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden">
-      <div className="mb-8 flex justify-between items-start">
+      <div className="mb-8 flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-white tracking-tight">Mutual Fund Comparison</h2>
           <p className="text-sm text-gray-400 mt-1">Analyzing performance and risk metrics head-to-head</p>
         </div>
 
-        <div className="flex bg-[#1f2833] rounded-lg p-1 border border-white/10 shadow-inner">
+        <div className="flex bg-[#1f2833] rounded-lg p-1.5 border border-white/10 shadow-inner gap-1.5">
           {periods.map(p => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${period === p ? 'bg-[var(--accent-color)] text-black shadow-lg scale-105' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+              className={`px-4 py-2 text-xs font-medium rounded-md transition-all duration-200 ${period === p ? 'bg-[var(--accent-color)] text-black shadow-lg scale-105' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
               {p}
             </button>

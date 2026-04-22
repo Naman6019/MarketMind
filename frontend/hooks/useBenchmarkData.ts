@@ -34,9 +34,10 @@ export function useBenchmarkData() {
             if (closes[i] === null || closes[i] === undefined) continue;
             
             const date = new Date(timestamps[i] * 1000);
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
+            // Use UTC to avoid timezone shifts affecting the date string
+            const day = String(date.getUTCDate()).padStart(2, '0');
+            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const year = date.getUTCFullYear();
             
             points.push({
               date: `${day}-${month}-${year}`,
