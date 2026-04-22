@@ -43,6 +43,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def read_root():
+    return {"message": "QuantPulse API is running. Use /health for health checks."}
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
