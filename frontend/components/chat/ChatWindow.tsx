@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Send } from 'lucide-react';
+import { useCanvasStore } from '@/store/useCanvasStore';
 
 type Message = {
   id: string;
@@ -21,6 +22,7 @@ export default function ChatWindow() {
   ]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const { setView, setIds, openCanvas } = useCanvasStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,11 +66,10 @@ export default function ChatWindow() {
       const data = await res.json();
       
       if (data.system_action) {
-        const store = (await import('@/store/useCanvasStore')).useCanvasStore;
         if (data.system_action.type === 'COMPARE') {
-            store.getState().setIds(data.system_action.ids);
-            store.getState().setView('COMPARISON');
-            store.getState().openCanvas();
+            setIds(data.system_action.ids);
+            setView('COMPARISON');
+            openCanvas();
         }
       }
       

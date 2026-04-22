@@ -4,9 +4,9 @@ import { FundDataResponse } from '../types/funds';
 const globalCache = new Map<string, FundDataResponse>();
 const pendingRequests = new Map<string, Promise<FundDataResponse>>();
 
-export function useFundData(schemeCode: string) {
-  const [data, setData] = useState<FundDataResponse | null>(globalCache.get(schemeCode) || null);
-  const [loading, setLoading] = useState<boolean>(!globalCache.has(schemeCode));
+export function useFundData(schemeCode: string | null) {
+  const [data, setData] = useState<FundDataResponse | null>(schemeCode ? (globalCache.get(schemeCode) || null) : null);
+  const [loading, setLoading] = useState<boolean>(schemeCode ? !globalCache.has(schemeCode) : false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
