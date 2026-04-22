@@ -442,31 +442,29 @@ async def chat_endpoint(req: ChatRequest):
                 "nippon india small cap": "119332"
             }
             
-            if supabase:
-                for entity in entities:
-                    ent_lower = entity.lower()
-                    resolved = False
-                    
-                    # 1. Try hardcoded fallback for common funds
-                    for key, code in fallback_map.items():
-                        if key in ent_lower:
-                            resolved_ids.append(code)
-                            resolved = True
-                            break
-                    
-                    if resolved: continue
-
-                    # 2. Check if it's a stock ticker (usually uppercase, ends in .NS or .BO or is short)
-                    # Simple heuristic: if it has no spaces and is short, or has .NS/.BO
-                    if " " not in entity or ".ns" in ent_lower or ".bo" in ent_lower:
-                        # Treat as ticker
-                        ticker_clean = entity.split()[0].upper()
-                        resolved_ids.append(ticker_clean)
+            for entity in entities:
+                ent_lower = entity.lower()
+                resolved = False
+                
+                # 1. Try hardcoded fallback for common funds (Works even without DB)
+                for key, code in fallback_map.items():
+                    if key in ent_lower:
+                        resolved_ids.append(code)
                         resolved = True
-                    
-                    if resolved: continue
+                        break
+                
+                if resolved: continue
 
-                    # 3. Try Supabase for Mutual Funds
+                # 2. Check if it's a stock ticker (Works even without DB)
+                if " " not in entity or ".ns" in ent_lower or ".bo" in ent_lower:
+                    ticker_clean = entity.split()[0].upper()
+                    resolved_ids.append(ticker_clean)
+                    resolved = True
+                
+                if resolved: continue
+
+                # 3. Try Supabase for Mutual Funds (Requires DB)
+                if supabase:
                     try:
                         res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').execute()
                         if res.data and len(res.data) > 0:
