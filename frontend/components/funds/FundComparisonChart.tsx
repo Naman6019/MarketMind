@@ -5,18 +5,17 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useFundData } from '../../hooks/useFundData';
 import { filterByPeriod, normalizeTo100, downsample } from '../../lib/fundDataUtils';
 
-type Period = '1D' | '6M' | '1Y' | '3Y' | '5Y';
+export type Period = '1D' | '6M' | '1Y' | '3Y' | '5Y';
 
 interface Props {
   schemeCodeA: string;
   schemeCodeB: string;
   nameA: string;
   nameB: string;
+  period: Period;
 }
 
-export default function FundComparisonChart({ schemeCodeA, schemeCodeB, nameA, nameB }: Props) {
-  const [period, setPeriod] = useState<Period>('1Y');
-
+export default function FundComparisonChart({ schemeCodeA, schemeCodeB, nameA, nameB, period }: Props) {
   const fundA = useFundData(schemeCodeA);
   const fundB = useFundData(schemeCodeB);
 
@@ -85,23 +84,10 @@ export default function FundComparisonChart({ schemeCodeA, schemeCodeB, nameA, n
     return <div className="text-red-400 text-sm">Failed to load chart: {error}</div>;
   }
 
-  const periods: Period[] = ['1D', '6M', '1Y', '3Y', '5Y'];
-
   return (
-    <div className="mb-6 mt-8">
+    <div className="mb-6 mt-4">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-md font-medium text-gray-300">Normalized Performance (Rebased to 100)</h3>
-        <div className="flex bg-[#1f2833] rounded-lg p-1 border border-white/10">
-          {periods.map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1 text-xs rounded-md transition-colors ${period === p ? 'bg-[var(--accent-color)] text-black font-medium' : 'text-gray-400 hover:text-white'}`}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
       </div>
       
       <div className="h-[320px] w-full bg-black/20 rounded-xl p-4 border border-white/5 relative">

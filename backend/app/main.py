@@ -106,7 +106,7 @@ async def function_ollama_chat(messages, format="json", max_retries=2):
 async def route_query(query: str) -> dict:
     """Agent 1: Router"""
     system_prompt = """You are the Router Agent for MarketMind. Classify the user query intent.
-If the query asks to filter, list, or screen stocks (e.g., "Find stocks with PE < 20", "Show me oversold stocks"), set intent to 'screener' and populate 'screener_filters'.
+If the query asks to filter, list, or screen stocks (e.g., "Find stocks with PE < 20", "Show me oversold stocks", "Mid cap stocks with RSI < 30"), set intent to 'screener' and populate 'screener_filters'.
 If the query asks to compare two or more mutual funds or stocks, set intent to 'compare' and populate 'compare_entities' with a list of their names (e.g. ["HDFC Flexi Cap", "Parag Parikh Flexi Cap"]).
 Otherwise, use 'quant', 'news', 'both', or 'general'.
 Extract primary NSE/BSE ticker explicitly (e.g. RELIANCE.NS, ^NSEI for Nifty). 
@@ -122,7 +122,8 @@ Output strict JSON only format:
   "screener_filters": {
     "min_pe": 0,
     "max_pe": 100,
-    "rsi_range": {"min": 0, "max": 100}
+    "rsi_range": {"min": 0, "max": 100},
+    "category": "Large Cap|Mid Cap|Small Cap"
   },
   "compare_entities": ["Asset 1 Name", "Asset 2 Name"]
 }
@@ -276,7 +277,7 @@ def fetch_news(query: str, ticker: str, sentiment_flag: bool = False) -> list:
         return []
 
 async def run_screener(filters: dict) -> list:
-    """Screener Engine against NIFTY 50 universe using Supabase"""
+    """Screener Engine against stock universe using Supabase"""
     if not supabase:
         logger.error("Supabase client not initialized")
         return []
@@ -301,6 +302,10 @@ async def run_screener(filters: dict) -> list:
         if rsi_max is not None:
             query = query.lte('rsi', rsi_max)
             
+        category = filters.get("category")
+        if category:
+            query = query.eq('category', category)
+            
         res = query.execute()
         raw_results = res.data
         
@@ -309,6 +314,7 @@ async def run_screener(filters: dict) -> list:
         for r in raw_results:
             formatted_results.append({
                 "Symbol": r["symbol"],
+                "Category": r.get("category", "N/A"),
                 "RSI": round(r["rsi"], 2) if r.get("rsi") is not None else "N/A",
                 "P/E": round(r["pe_ratio"], 2) if r.get("pe_ratio") is not None else "N/A",
                 "Recommendation": r.get("recommendation", "N/A")

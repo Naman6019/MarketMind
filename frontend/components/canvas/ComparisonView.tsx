@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useFundData } from '../../hooks/useFundData';
-import FundComparisonChart from '../funds/FundComparisonChart';
+import FundComparisonChart, { Period } from '../funds/FundComparisonChart';
 import FundDetailsPanel from '../funds/FundDetailsPanel';
 
 
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export default function ComparisonView({ ids, type }: Props) {
+  const [period, setPeriod] = useState<Period>('1Y');
+
   if (!ids || ids.length < 2) {
     return <div className="p-6 text-gray-400">Insufficient data for comparison.</div>;
   }
@@ -40,15 +43,27 @@ export default function ComparisonView({ ids, type }: Props) {
 
   const loading = fundA.loading || fundB.loading;
   const error = fundA.error || fundB.error;
+  const periods: Period[] = ['1D', '6M', '1Y', '3Y', '5Y'];
 
   return (
     <div className="comparison-detail p-6 bg-[var(--panel-bg)] rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden">
-      <div className="mb-6 flex justify-between items-center">
+      <div className="mb-8 flex justify-between items-start">
         <div>
           <h2 className="text-2xl font-bold text-white tracking-tight">Mutual Fund Comparison</h2>
           <p className="text-sm text-gray-400 mt-1">Analyzing performance and risk metrics head-to-head</p>
         </div>
 
+        <div className="flex bg-[#1f2833] rounded-lg p-1 border border-white/10 shadow-inner">
+          {periods.map(p => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${period === p ? 'bg-[var(--accent-color)] text-black shadow-lg scale-105' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && (
@@ -74,21 +89,24 @@ export default function ComparisonView({ ids, type }: Props) {
       )}
       
       {!loading && !error && fundA.meta && fundB.meta && (
-        <div className="flex-1 overflow-y-auto pr-2 custom-scroll space-y-8 pb-12">
+        <div className="flex-1 overflow-y-auto pr-2 custom-scroll space-y-12 pb-12">
           <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <FundComparisonChart 
               schemeCodeA={ids[0]} 
               schemeCodeB={ids[1]} 
               nameA={fundA.meta.scheme_name} 
               nameB={fundB.meta.scheme_name} 
+              period={period}
             />
           </section>
 
-          <section className="animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
-            <FundDetailsPanel 
-              schemeCodeA={ids[0]} 
-              schemeCodeB={ids[1]} 
-            />
+          <section className="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
+            <div className="pt-4 border-t border-white/5">
+              <FundDetailsPanel 
+                schemeCodeA={ids[0]} 
+                schemeCodeB={ids[1]} 
+              />
+            </div>
           </section>
         </div>
       )}

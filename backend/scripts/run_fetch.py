@@ -27,6 +27,20 @@ NIFTY_50_TICKERS = [
     "SBILIFE"
 ]
 
+MIDCAP_TICKERS = [
+    "MAXHEALTH", "YESBANK", "IDFCFIRSTB", "TATACOMM", "RVNL", "AUROPHARMA", "KPITTECH", 
+    "PERSISTENT", "CUMMINSIND", "VOLTAS", "CONCOR", "HINDPETRO", "MRF", "ASHOKLEY", 
+    "BALKRISIND", "DIXON", "POLYCAB", "LUPIN", "NMDC", "TRENT", "CANBK", "FEDERALBNK",
+    "IDBI", "OBEROIRLTY", "PEL", "SRF", "TATAELXSI", "UNIONBANK", "ZEEL", "BATAINDIA"
+]
+
+SMALLCAP_TICKERS = [
+    "SUZLON", "RITES", "IRFC", "MAZDOCK", "KEC", "MCX", "BSOFT", "CYIENT", "ANGELONE", 
+    "CDSL", "ZENSARTECH", "SONATSOFTW", "KEI", "RADICO", "HFCL", "NBCC", "BSE", 
+    "HUDCO", "JSL", "CASTROLIND", "CENTRALBK", "FSL", "IEX", "JWL", "PPLPHARMA", 
+    "RAILTEL", "SJVN", "SOUTHBANK", "TEJASNET", "WELCORP"
+]
+
 def compute_rsi(data: pd.DataFrame, window=14):
     if len(data) < window:
         return None
@@ -39,9 +53,9 @@ def compute_rsi(data: pd.DataFrame, window=14):
     rsi = 100 - (100 / (1 + rs))
     return float(rsi.iloc[-1])
 
-def fetch_single_ticker(ticker: str, nifty_hist: pd.DataFrame = None):
+def fetch_single_ticker(ticker: str, category: str, nifty_hist: pd.DataFrame = None):
     data = {
-        "symbol": ticker, "rsi": None, "pe_ratio": None, 
+        "symbol": ticker, "category": category, "rsi": None, "pe_ratio": None, 
         "recommendation": None, "current_price": None,
         "change_pct": None, "market_cap": None, "beta": None, "alpha_vs_nifty": None
     }
@@ -91,7 +105,15 @@ def main():
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_KEY environment variables.")
 
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    logger.info(f"Starting EOD fetch for {len(NIFTY_50_TICKERS)} tickers...")
+    
+    ticker_groups = [
+        (NIFTY_50_TICKERS, "Large Cap"),
+        (MIDCAP_TICKERS, "Mid Cap"),
+        (SMALLCAP_TICKERS, "Small Cap")
+    ]
+    
+    total_tickers = sum(len(g[0]) for g in ticker_groups)
+    logger.info(f"Starting EOD fetch for {total_tickers} tickers...")
     
     logger.info("Pre-fetching NIFTY 50 baseline...")
     try:
@@ -100,17 +122,20 @@ def main():
         nifty_baseline = None
 
     success = 0
-    for ticker in NIFTY_50_TICKERS:
-        data = fetch_single_ticker(ticker, nifty_baseline)
-        try:
-            supabase.table('nifty_stocks').upsert(data).execute()
-            success += 1
-            logger.info(f"✅  {ticker}: price={data['current_price']} pe={data['pe_ratio']} rsi={data['rsi']}")
-        except Exception as e:
-            logger.error(f"❌  Supabase upsert failed for {ticker}: {e}")
-        time.sleep(1.0)
+    for tickers, category in ticker_groups:
+        logger.info(f"Processing {category} group ({len(tickers)} tickers)...")
+        for ticker in tickers:
+            data = fetch_single_ticker(ticker, category, nifty_baseline)
+            try:
+                supabase.table('nifty_stocks').upsert(data).execute()
+                success += 1
+                logger.info(f"✅  {ticker} ({category}): price={data['current_price']} pe={data['pe_ratio']} rsi={data['rsi']}")
+            except Exception as e:
+                logger.error(f"❌  Supabase upsert failed for {ticker}: {e}")
+            time.sleep(1.0)
 
-    logger.info(f"Finished. {success}/{len(NIFTY_50_TICKERS)} stocks updated.")
+    logger.info(f"Finished. {success}/{total_tickers} stocks updated.")
+
 
 if __name__ == "__main__":
     main()

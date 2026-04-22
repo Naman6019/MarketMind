@@ -218,7 +218,6 @@ export default function FundDetailsPanel({ schemeCodeA, schemeCodeB }: Props) {
         <div className="hidden md:block w-[1px] bg-white/10 my-4 mx-2"></div>
         <FundColumn schemeCode={schemeCodeB} colorHex="#F97316" />
       </div>
-      </div>
     </div>
   );
 }

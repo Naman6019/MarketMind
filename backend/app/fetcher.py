@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import time
 import logging
+import math
 from app.database import supabase
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,20 @@ NIFTY_50_TICKERS = [
     "SBILIFE"
 ]
 
+MIDCAP_TICKERS = [
+    "MAXHEALTH", "YESBANK", "IDFCFIRSTB", "TATACOMM", "RVNL", "AUROPHARMA", "KPITTECH", 
+    "PERSISTENT", "CUMMINSIND", "VOLTAS", "CONCOR", "HINDPETRO", "MRF", "ASHOKLEY", 
+    "BALKRISIND", "DIXON", "POLYCAB", "LUPIN", "NMDC", "TRENT", "CANBK", "FEDERALBNK",
+    "IDBI", "OBEROIRLTY", "PEL", "SRF", "TATAELXSI", "UNIONBANK", "ZEEL", "BATAINDIA"
+]
+
+SMALLCAP_TICKERS = [
+    "SUZLON", "RITES", "IRFC", "MAZDOCK", "KEC", "MCX", "BSOFT", "CYIENT", "ANGELONE", 
+    "CDSL", "ZENSARTECH", "SONATSOFTW", "KEI", "RADICO", "HFCL", "NBCC", "BSE", 
+    "HUDCO", "JSL", "CASTROLIND", "CENTRALBK", "FSL", "IEX", "JWL", "PPLPHARMA", 
+    "RAILTEL", "SJVN", "SOUTHBANK", "TEJASNET", "WELCORP"
+]
+
 def compute_rsi(data: pd.DataFrame, window=14):
     if len(data) < window: return None
     delta = data['Close'].diff()
@@ -30,9 +45,9 @@ def compute_rsi(data: pd.DataFrame, window=14):
     rsi = 100 - (100 / (1 + rs))
     return float(rsi.iloc[-1])
 
-def fetch_single_ticker(ticker: str, nifty_hist: pd.DataFrame = None):
+def fetch_single_ticker(ticker: str, category: str, nifty_hist: pd.DataFrame = None):
     data = {
-        "symbol": ticker, "rsi": None, "pe_ratio": None, 
+        "symbol": ticker, "category": category, "rsi": None, "pe_ratio": None, 
         "recommendation": None, "current_price": None,
         "change_pct": None, "market_cap": None, "beta": None, "alpha_vs_nifty": None
     }
@@ -75,6 +90,11 @@ def fetch_single_ticker(ticker: str, nifty_hist: pd.DataFrame = None):
     except Exception as e:
         logger.warning(f"YFinance failed for {ticker}: {e}")
         
+    # Convert any NaN or Infinity floats to None (JSON null)
+    for key, value in data.items():
+        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+            data[key] = None
+            
     return data
 
 def run_eod_fetch():
@@ -83,7 +103,15 @@ def run_eod_fetch():
         return {"error": "Supabase not configured"}
         
     results = []
-    logger.info("Starting background EOD fetch for NIFTY 50 strictly using YFinance...")
+    
+    ticker_groups = [
+        (NIFTY_50_TICKERS, "Large Cap"),
+        (MIDCAP_TICKERS, "Mid Cap"),
+        (SMALLCAP_TICKERS, "Small Cap")
+    ]
+    
+    total_tickers = sum(len(g[0]) for g in ticker_groups)
+    logger.info(f"Starting background EOD fetch for {total_tickers} stocks...")
     
     # Pre-fetch Nifty history for relative alpha calculation
     logger.info("Pre-fetching NIFTY 50 baseline...")
@@ -92,17 +120,18 @@ def run_eod_fetch():
     except:
         nifty_baseline = None
 
-    for ticker in NIFTY_50_TICKERS:
-        data = fetch_single_ticker(ticker, nifty_baseline)
-        
-        # Upsert
-        try:
-            res = supabase.table('nifty_stocks').upsert(data).execute()
-            results.append(data)
-        except Exception as e:
-            logger.error(f"Supabase upsert failed for {ticker}: {e}")
-        
-        time.sleep(1.0) # YFinance requires less resting time
+    for tickers, category in ticker_groups:
+        for ticker in tickers:
+            data = fetch_single_ticker(ticker, category, nifty_baseline)
+            
+            # Upsert
+            try:
+                res = supabase.table('nifty_stocks').upsert(data).execute()
+                results.append(data)
+            except Exception as e:
+                logger.error(f"Supabase upsert failed for {ticker}: {e}")
+            
+            time.sleep(1.0)
         
     logger.info("Finished background EOD fetch.")
     return {"status": "success", "count": len(results)}
