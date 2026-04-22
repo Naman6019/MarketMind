@@ -366,7 +366,7 @@ You are synthesizing data into a final response.
 1. Open with a one-line market context statement.
 2. Present quantitative data, comparison data, or screener results in a clean, scannable markdown table.
 3. Follow with relevant news (if any), newest first. Including the [Sentiment] tag if provided.
-4. Close with a Trend Observation — Provide DEEP, ANALYTICAL reasoning here. Do not just regurgitate the numbers; explain exactly *why* the numbers matter together. For example, if P/E is uniquely low but RSI indicates it is oversold, hypothesize the market conditions causing this and provide strong supporting arguments. Make your analysis highly educational, uncovering the 'why' behind the metrics. Provide well-reasoned hypotheses, not shallow summaries.
+4. Close with a Trend Observation — Provide DEEP, ANALYTICAL reasoning here. Do not just regurgitate the numbers; explain exactly *why* the numbers matter together. Make your analysis highly educational, uncovering the 'why' behind the metrics. Provide well-reasoned hypotheses, not shallow summaries.
 5. Append the complete mandatory disclaimer at the very end. Format it precisely as a blockquote using `> ⚠️ **Disclaimer:**`.
 6. Ensure neat spacing. ALWAYS use double blank lines (`\n\n`) between the Snapshot, Table, News List, Trend Observation, and the final Disclaimer.
 
@@ -424,6 +424,7 @@ Screener Results:
 
 @app.get("/api/trigger-fetch")
 async def trigger_eod_fetch(background_tasks: BackgroundTasks):
+    """Trigger background EOD fetching process via cron tool"""
     background_tasks.add_task(run_eod_fetch)
     return {"message": "Background fetch process triggered successfully."}
 
@@ -447,32 +448,61 @@ async def chat_endpoint(req: ChatRequest):
         entities = intent_info.get("compare_entities", [])
         comparison_results = {}
         for entity in entities:
-            # 1. Try yfinance ticker resolution first (for risk metrics)
+            # DATABASE FIRST STRATEGY (Supabase has 14k+ rows)
+            db_data = None
+            if supabase:
+                try:
+                    # Clean the entity name for better matching
+                    search_term = entity.lower().replace(' fund', '').replace(' growth', '').strip()
+                    res = supabase.table('mutual_funds').select('*').ilike('scheme_name', f'%{search_term}%').limit(10).execute()
+                    if res.data:
+                        # Prefer Direct/Growth if multiple results
+                        best_match = res.data[0]
+                        for row in res.data:
+                            name = row['scheme_name'].lower()
+                            if 'direct' in name and 'growth' in name:
+                                best_match = row
+                                break
+                        db_data = {
+                            "name": best_match['scheme_name'],
+                            "nav": best_match['nav'],
+                            "nav_date": best_match['nav_date'],
+                            "category": best_match['category'],
+                            "fund_house": best_match['fund_house'],
+                            "expense_ratio": best_match.get('expense_ratio', "N/A"),
+                            "aum": best_match.get('aum', "N/A"),
+                            "source": "MarketMind DB"
+                        }
+                except Exception as e:
+                    logger.error(f"Supabase compare error: {e}")
+
+            # Risk Metrics from yfinance (Beta/Alpha)
+            risk_metrics = {}
             yf_ticker = await resolve_mf_ticker(entity)
             if yf_ticker:
+                try:
+                    # Only fetch 1y history for speed and to avoid rate limits
+                    stock = yf.Ticker(yf_ticker)
+                    hist = stock.history(period="1y")
+                    nifty = yf.Ticker("^NSEI")
+                    nifty_hist = nifty.history(period="1y")
+                    risk_metrics = calculate_alpha_beta_v2(hist, nifty_hist)
+                    # Add AUM if yfinance has it but DB doesn't
+                    if db_data and (not db_data.get("aum") or db_data["aum"] == "N/A"):
+                        db_data["aum"] = stock.info.get("totalAssets", "N/A")
+                except:
+                    pass
+
+            if db_data:
+                # Merge risk metrics into db_data
+                db_data.update(risk_metrics)
+                comparison_results[entity] = db_data
+            elif yf_ticker:
+                # Fallback to yfinance if DB match failed but ticker exists
                 comparison_results[entity] = fetch_quant_data(yf_ticker, period)
             else:
-                # 2. Fallback to Supabase Database (The 14,000 rows)
-                if supabase:
-                    try:
-                        res = supabase.table('mutual_funds').select('*').ilike('scheme_name', f'%{entity}%').limit(1).execute()
-                        if res.data and len(res.data) > 0:
-                            fund = res.data[0]
-                            comparison_results[entity] = {
-                                "name": fund['scheme_name'],
-                                "nav": fund['nav'],
-                                "nav_date": fund['nav_date'],
-                                "category": fund['category'],
-                                "fund_house": fund['fund_house'],
-                                "expense_ratio": fund.get('expense_ratio', "N/A"),
-                                "aum": fund.get('aum', "N/A"),
-                                "source": "Supabase Database"
-                            }
-                        else:
-                            comparison_results[entity] = {"error": "Not found in database"}
-                    except Exception as e:
-                        logger.error(f"Supabase compare fetch error: {e}")
-                        comparison_results[entity] = {"error": "Database query failed"}
+                comparison_results[entity] = {"error": "Data not found for this entity"}
+                
         quant_data = {"comparison": comparison_results}
         
     else:
@@ -496,7 +526,7 @@ async def chat_endpoint(req: ChatRequest):
                             "fund_house": fund['fund_house'],
                             "aum": fund.get('aum', "N/A"),
                             "expense_ratio": fund.get('expense_ratio', "N/A"),
-                            "source": "Supabase Database"
+                            "source": "MarketMind DB"
                         }
                 except: pass
             
