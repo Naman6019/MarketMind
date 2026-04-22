@@ -7,13 +7,17 @@ import {
   toReturnsArray, 
   computeCAGR, 
   computeReturns, 
-  computeBeta, 
-  computeAlpha, 
   computeSharpe, 
   computeStdDev 
 } from '../../lib/fundMetrics';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
-import OverlapBadge from './OverlapBadge';
+import { 
+  alignData, 
+  calculateBeta, 
+  calculateAlpha,
+  calculateBenchCAGR 
+} from '../../lib/quantUtils';
+import { Info } from 'lucide-react';
+import { OverlapBadge } from './OverlapBadge';
 
 interface Props {
   schemeCodeA: string;
@@ -49,16 +53,27 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
 
     const dailyReturns = toReturnsArray(navData);
     
-    let beta = null;
-    let alpha = null;
+    let beta: number | null = null;
+    let alpha: number | null = null;
     
-    if (benchmark.data) {
-      const benchReturns = toReturnsArray(benchmark.data);
-      beta = computeBeta(dailyReturns, benchReturns);
+    if (benchmark.data && navData.length > 30) {
+      // navData is newest-first, we need oldest-first for alignment
+      const chronologicalFund = [...navData].reverse();
+      const { fundReturns, benchReturns } = alignData(chronologicalFund, benchmark.data);
       
-      const benchCAGR1Y = computeCAGR(benchmark.data, 1);
-      if (cagr1Y !== null && benchCAGR1Y !== null && beta !== null) {
-        alpha = computeAlpha(cagr1Y, beta, benchCAGR1Y);
+      if (fundReturns.length > 20) {
+        beta = calculateBeta(fundReturns, benchReturns);
+        
+        // Calculate Alpha using 3-year CAGR if possible, otherwise use 1-year
+        const is3Y = !!cagr3Y;
+        const fCAGR = is3Y ? cagr3Y! / 100 : (cagr1Y ? cagr1Y / 100 : null);
+        
+        // Compute benchmark CAGR for the same period
+        const bCAGR = calculateBenchCAGR(benchmark.data, is3Y ? 3 : 1);
+        
+        if (fCAGR !== null && bCAGR !== null && beta !== null) {
+          alpha = calculateAlpha(fCAGR, bCAGR, beta) * 100;
+        }
       }
     }
 
@@ -98,8 +113,8 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
   return (
     <div className="flex-1 flex flex-col gap-6 p-4">
       <div className="flex flex-col gap-1">
-        <h3 className="text-lg font-semibold truncate" style={{ color: colorHex }} title={meta.scheme_name}>
-          {meta.scheme_name}
+        <h3 className="text-lg font-semibold truncate group relative cursor-default" style={{ color: colorHex }}>
+          <span className="truncate block" title={meta.scheme_name}>{meta.scheme_name}</span>
         </h3>
         <span className="text-xs text-gray-400 bg-white/5 self-start px-2 py-0.5 rounded">
           {meta.scheme_category}
@@ -118,12 +133,28 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
             <div className="text-gray-200">₹{latestNav} <span className="text-[10px] text-gray-500">({navDate})</span></div>
           </div>
           <div>
-            <div className="text-xs text-gray-500">Expense Ratio</div>
-            <div className="text-gray-200">N/A</div>
+            <div className="text-xs text-gray-500 flex items-center gap-1">
+              Expense Ratio
+              <div className="group/tip relative">
+                <Info size={10} className="text-gray-600 cursor-help" />
+                <div className="absolute bottom-full left-0 mb-1 w-32 p-1.5 bg-gray-900 text-[10px] text-gray-300 rounded shadow-lg opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-20">
+                  Data available via AMFI monthly fact sheet
+                </div>
+              </div>
+            </div>
+            <div className="text-gray-200">—</div>
           </div>
           <div>
-            <div className="text-xs text-gray-500">AUM</div>
-            <div className="text-gray-200">N/A</div>
+            <div className="text-xs text-gray-500 flex items-center gap-1">
+              AUM
+              <div className="group/tip relative">
+                <Info size={10} className="text-gray-600 cursor-help" />
+                <div className="absolute bottom-full left-0 mb-1 w-32 p-1.5 bg-gray-900 text-[10px] text-gray-300 rounded shadow-lg opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-20">
+                  AUM data available via AMFI monthly disclosures
+                </div>
+              </div>
+            </div>
+            <div className="text-gray-200">—</div>
           </div>
         </div>
       </div>
@@ -143,12 +174,12 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
         <div className="grid grid-cols-2 gap-3">
           <MetricCard 
             label="Alpha" 
-            value={metrics.alpha !== null ? metrics.alpha.toFixed(2) + '%' : null} 
+            value={metrics.alpha !== null ? (metrics.alpha > 0 ? '+' : '') + metrics.alpha.toFixed(2) + '%' : '—'} 
             tooltip="Excess return over benchmark (Nifty 50) for the risk taken. Higher is better." 
           />
           <MetricCard 
             label="Beta" 
-            value={metrics.beta !== null ? metrics.beta.toFixed(2) : null} 
+            value={metrics.beta !== null ? metrics.beta.toFixed(2) : '—'} 
             tooltip="Volatility compared to market. >1 means more volatile, <1 means less volatile." 
           />
           <MetricCard 
@@ -164,40 +195,14 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
         </div>
       </div>
 
-      <div className="bg-black/20 rounded-xl p-4 border border-white/5 flex flex-col h-[200px]">
-        <h4 className="text-sm font-medium text-white mb-1">Sector Allocation</h4>
-        <div className="text-xs text-gray-500 mb-2">Holdings updated monthly by AMFI</div>
-        <div className="flex-1 relative w-full flex items-center">
-          <ResponsiveContainer width="50%" height="100%">
-            <PieChart>
-              <Pie
-                data={placeholderSectors}
-                cx="50%"
-                cy="50%"
-                innerRadius={30}
-                outerRadius={45}
-                paddingAngle={2}
-                dataKey="value"
-                stroke="none"
-              >
-                {placeholderSectors.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <RechartsTooltip 
-                contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '6px' }}
-                itemStyle={{ fontSize: '12px', color: '#fff' }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="w-[50%] flex flex-col gap-2 pl-2 overflow-y-auto">
-            {placeholderSectors.map((s, i) => (
-              <div key={s.name} className="flex items-center gap-2 text-xs">
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
-                <span className="text-gray-300 truncate">{s.name}</span>
-                <span className="text-gray-500 ml-auto">{s.value}%</span>
-              </div>
-            ))}
+      <div className="bg-black/20 rounded-xl p-4 border border-white/5">
+        <h4 className="text-sm font-medium text-white mb-2">Top Holdings</h4>
+        <div className="flex flex-col items-center justify-center py-8 text-center px-4">
+          <div className="text-gray-500 text-xs mb-2 italic">
+            Holdings data sourced from AMFI monthly disclosures — updated on the 10th of each month
+          </div>
+          <div className="text-[10px] text-gray-600">
+            Real-time portfolio access is currently limited. Sector allocation and stock-wise breakdown will be available in the next update.
           </div>
         </div>
       </div>

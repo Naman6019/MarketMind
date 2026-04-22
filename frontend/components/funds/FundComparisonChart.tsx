@@ -164,12 +164,17 @@ export default function FundComparisonChart({ schemeCodeA, schemeCodeB, nameA, n
                 formatter={(value: any, name: any, props: any) => {
                   const actual = name === 'assetA' ? props.payload.actualA : props.payload.actualB;
                   const fundName = name === 'assetA' ? nameA : nameB;
+                  const returnPct = value - 100;
                   return [
                     <div key={name} className="flex flex-col">
-                      <span className="font-medium">{fundName}</span>
-                      <span className="text-gray-400 text-xs">NAV: ₹{actual?.toFixed(2)} | Rel: {value.toFixed(2)}</span>
+                      <span className="font-medium text-white">{fundName}</span>
+                      <span className="text-gray-400 text-xs">
+                        NAV: ₹{actual?.toFixed(2)} | <span className={returnPct >= 0 ? 'text-green-400' : 'text-red-400'}>
+                          {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(2)}%
+                        </span>
+                      </span>
                     </div>, 
-                    '' // Hide the default name column
+                    ''
                   ];
                 }}
               />

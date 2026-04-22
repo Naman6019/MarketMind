@@ -1,53 +1,62 @@
-import { useState, useEffect } from 'react';
-import { NavPoint } from '../types/funds';
+'use client';
 
-let cachedBenchmarkData: NavPoint[] | null = null;
-let fetchPromise: Promise<NavPoint[]> | null = null;
+import { useState, useEffect } from 'react';
+
+export interface BenchmarkPoint {
+  date: string; // DD-MM-YYYY
+  close: number;
+}
+
+let cachedData: BenchmarkPoint[] | null = null;
+let pendingRequest: Promise<BenchmarkPoint[]> | null = null;
 
 export function useBenchmarkData() {
-  const [data, setData] = useState<NavPoint[] | null>(cachedBenchmarkData);
-  const [loading, setLoading] = useState(!cachedBenchmarkData);
+  const [data, setData] = useState<BenchmarkPoint[] | null>(cachedData);
+  const [loading, setLoading] = useState<boolean>(!cachedData);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (cachedBenchmarkData) {
-      setData(cachedBenchmarkData);
-      setLoading(false);
-      return;
-    }
+    if (cachedData) return;
 
-    if (!fetchPromise) {
-      fetchPromise = fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI?interval=1d&range=5y')
+    if (!pendingRequest) {
+      pendingRequest = fetch('https://query1.finance.yahoo.com/v8/finance/chart/^NSEI?interval=1d&range=5y')
         .then(res => {
-          if (!res.ok) throw new Error('Failed to fetch benchmark');
+          if (!res.ok) throw new Error('Failed to fetch benchmark data');
           return res.json();
         })
         .then(json => {
           const result = json.chart.result[0];
           const timestamps = result.timestamp;
           const closes = result.indicators.quote[0].close;
-          
-          const points: NavPoint[] = [];
+
+          const points: BenchmarkPoint[] = [];
           for (let i = 0; i < timestamps.length; i++) {
-            if (closes[i] !== null && closes[i] !== undefined) {
-              const d = new Date(timestamps[i] * 1000);
-              const dateStr = `${d.getDate().toString().padStart(2, '0')}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getFullYear()}`;
-              points.push({ date: dateStr, nav: closes[i].toString() });
-            }
+            if (closes[i] === null || closes[i] === undefined) continue;
+            
+            const date = new Date(timestamps[i] * 1000);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            
+            points.push({
+              date: `${day}-${month}-${year}`,
+              close: closes[i]
+            });
           }
-          cachedBenchmarkData = points.reverse(); // newest-first
-          return cachedBenchmarkData;
+          cachedData = points;
+          return points;
         });
     }
 
-    fetchPromise
-      .then(res => {
-        setData(res);
+    pendingRequest
+      .then(points => {
+        setData(points);
         setLoading(false);
       })
       .catch(err => {
         setError(err.message);
         setLoading(false);
+        pendingRequest = null; // Reset on failure
       });
   }, []);
 
