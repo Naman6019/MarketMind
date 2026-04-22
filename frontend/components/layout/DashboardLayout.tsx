@@ -1,8 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useCanvasStore } from '@/store/useCanvasStore';
-import { ChevronRight, ChevronLeft } from 'lucide-react';
+import { ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import ChatWindow from '@/components/chat/ChatWindow';
 import StockDetailView from '@/components/canvas/StockDetailView';
 import MFDetailView from '@/components/canvas/MFDetailView';
@@ -10,6 +11,7 @@ import ComparisonView from '@/components/canvas/ComparisonView';
 
 export default function DashboardLayout() {
   const { isCanvasOpen, activeView, selectedIds, toggleCanvas, closeCanvas } = useCanvasStore();
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
 
   const renderCanvasContent = () => {
     switch (activeView) {
@@ -25,11 +27,20 @@ export default function DashboardLayout() {
   };
 
   return (
-    <div className="app-container">
-      <aside className="sidebar w-[280px] flex-shrink-0 z-20 h-full flex flex-col">
-        <div className="brand">
-          <div className="logo"></div>
-          <h1>MarketMind</h1>
+    <div className={`app-container ${isSidebarVisible ? '' : 'sidebar-collapsed'}`}>
+      <aside className={`sidebar ${isSidebarVisible ? '' : 'sidebar-hidden'} z-20 h-full flex flex-col`}>
+        <div className="flex justify-between items-start mb-6">
+          <div className="brand">
+            <div className="logo"></div>
+            <h1>MarketMind</h1>
+          </div>
+          <button 
+            onClick={() => setIsSidebarVisible(false)}
+            className="p-1.5 hover:bg-white/10 rounded-md text-gray-400 hover:text-white transition-colors"
+            title="Hide Sidebar"
+          >
+            <PanelLeftClose size={18} />
+          </button>
         </div>
         <p className="tagline">Data-driven market context.</p>
 
@@ -50,6 +61,15 @@ export default function DashboardLayout() {
       <main className="flex-1 h-full relative flex overflow-hidden gap-4">
         <PanelGroup direction="horizontal">
           <Panel defaultSize={isCanvasOpen ? 40 : 100} minSize={30} className="relative transition-all duration-300 ease-in-out chat-area">
+            {!isSidebarVisible && (
+              <button 
+                onClick={() => setIsSidebarVisible(true)}
+                className="absolute top-4 left-4 z-50 bg-[#1f2833] border border-white/10 p-2 rounded-lg text-white hover:bg-white/10 transition-colors shadow-lg"
+                title="Show Sidebar"
+              >
+                <PanelLeftOpen size={20} />
+              </button>
+            )}
             <ChatWindow />
             
             <button 

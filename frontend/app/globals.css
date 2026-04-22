@@ -49,6 +49,11 @@ body {
   height: 100vh;
   padding: 1rem;
   gap: 1rem;
+  transition: gap 0.3s ease;
+}
+
+.sidebar-collapsed {
+  gap: 0;
 }
 
 /* Sidebar Styling */
@@ -63,7 +68,16 @@ body {
   display: flex;
   flex-direction: column;
   box-shadow: var(--glass-shadow);
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, width 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+}
+
+.sidebar-hidden {
+  transform: translateX(-300px);
+  width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .brand {

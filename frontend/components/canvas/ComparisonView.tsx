@@ -3,7 +3,7 @@
 import { useFundData } from '../../hooks/useFundData';
 import FundComparisonChart from '../funds/FundComparisonChart';
 import FundDetailsPanel from '../funds/FundDetailsPanel';
-import OverlapBadge from '../funds/OverlapBadge';
+
 
 interface Props {
   ids: string[];
@@ -48,7 +48,7 @@ export default function ComparisonView({ ids, type }: Props) {
           <h2 className="text-2xl font-bold text-white tracking-tight">Mutual Fund Comparison</h2>
           <p className="text-sm text-gray-400 mt-1">Analyzing performance and risk metrics head-to-head</p>
         </div>
-        <OverlapBadge schemeCodeA={ids[0]} schemeCodeB={ids[1]} />
+
       </div>
 
       {loading && (

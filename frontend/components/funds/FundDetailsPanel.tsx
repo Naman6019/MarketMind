@@ -17,7 +17,7 @@ import {
   calculateBenchCAGR 
 } from '../../lib/quantUtils';
 import { Info } from 'lucide-react';
-import OverlapBadge from './OverlapBadge';
+
 
 interface Props {
   schemeCodeA: string;
@@ -218,8 +218,6 @@ export default function FundDetailsPanel({ schemeCodeA, schemeCodeB }: Props) {
         <div className="hidden md:block w-[1px] bg-white/10 my-4 mx-2"></div>
         <FundColumn schemeCode={schemeCodeB} colorHex="#F97316" />
       </div>
-      <div className="w-full flex justify-center mt-[-1rem] z-10">
-        <OverlapBadge schemeCodeA={schemeCodeA} schemeCodeB={schemeCodeB} />
       </div>
     </div>
   );
