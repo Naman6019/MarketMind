@@ -17,7 +17,7 @@ export default function ChatWindow() {
     {
       id: '1',
       role: 'system',
-      content: 'Welcome to QuantPulse. I monitor NSE/BSE quant data and latest financial news. How can I assist your market research today?',
+      content: 'Welcome to MarketMind. I monitor NSE/BSE quant data and latest financial news. How can I assist your market research today?',
     }
   ]);
   const [input, setInput] = useState('');
@@ -80,7 +80,7 @@ export default function ChatWindow() {
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), role: 'system', content: 'Error: Unable to reach QuantPulse core. Make sure the server is running.' },
+        { id: Date.now().toString(), role: 'system', content: 'Error: Unable to reach MarketMind core. Make sure the server is running.' },
       ]);
     } finally {
       setIsProcessing(false);

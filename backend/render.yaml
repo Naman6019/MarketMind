@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: quantpulse-api
+    name: marketmind-api
     env: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt

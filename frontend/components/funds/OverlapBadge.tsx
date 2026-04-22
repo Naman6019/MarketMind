@@ -8,7 +8,7 @@ interface Props {
   schemeCodeB: string;
 }
 
-export function OverlapBadge({ schemeCodeA, schemeCodeB }: Props) {
+export default function OverlapBadge({ schemeCodeA, schemeCodeB }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   // Since mfapi doesn't provide actual holdings, we use a placeholder overlap

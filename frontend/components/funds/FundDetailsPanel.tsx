@@ -17,7 +17,7 @@ import {
   calculateBenchCAGR 
 } from '../../lib/quantUtils';
 import { Info } from 'lucide-react';
-import { OverlapBadge } from './OverlapBadge';
+import OverlapBadge from './OverlapBadge';
 
 interface Props {
   schemeCodeA: string;

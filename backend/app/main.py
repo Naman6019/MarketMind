@@ -35,7 +35,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://quantpulse.vercel.app",
+        "https://marketmind.vercel.app",
         "http://localhost:3000",
     ],
     allow_credentials=True,
@@ -45,7 +45,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "QuantPulse API is running. Use /health for health checks."}
+    return {"message": "MarketMind API is running. Use /health for health checks."}
 
 @app.get("/health")
 def health():
@@ -105,7 +105,7 @@ async def function_ollama_chat(messages, format="json", max_retries=2):
 
 async def route_query(query: str) -> dict:
     """Agent 1: Router"""
-    system_prompt = """You are the Router Agent for QuantPulse. Classify the user query intent.
+    system_prompt = """You are the Router Agent for MarketMind. Classify the user query intent.
 If the query asks to filter, list, or screen stocks (e.g., "Find stocks with PE < 20", "Show me oversold stocks"), set intent to 'screener' and populate 'screener_filters'.
 If the query asks to compare two or more mutual funds or stocks, set intent to 'compare' and populate 'compare_entities' with a list of their names (e.g. ["HDFC Flexi Cap", "Parag Parikh Flexi Cap"]).
 Otherwise, use 'quant', 'news', 'both', or 'general'.
@@ -322,7 +322,7 @@ async def synthesis_response(query: str, intent_info: dict, quant_data: dict, ne
     """Synthesis Core"""
     
     if intent_info.get("intent") in ["general", "compare"]:
-        system_prompt_gen = """You are QuantPulse, an expert AI stock market research assistant and financial educator.
+        system_prompt_gen = """You are MarketMind, an expert AI stock market research assistant and financial educator.
 If the user asks basic educational questions (e.g., 'What is PE ratio?', 'Explain the metrics used here'), provide a clear, comprehensive, and beginner-friendly explanation. 
 Break down metrics like P/E Ratio (valuation), RSI (momentum/overbought/oversold), and moving averages carefully. Use bullet points and analogies if helpful. 
 Do NOT be overly brief when explaining concepts. Provide deep value to the user.
@@ -333,7 +333,7 @@ NEVER give direct financial advice to buy or sell a specific stock."""
         ]
         return await function_ollama_chat(messages, format="text")
 
-    system_prompt = """You are QuantPulse, a 3-agent stock market research assistant for Indian retail investors. 
+    system_prompt = """You are MarketMind, a 3-agent stock market research assistant for Indian retail investors. 
 You are synthesizing data into a final response. 
 
 ## SYNTHESIS RULES
@@ -362,7 +362,7 @@ You are synthesizing data into a final response.
 
 [4–6 sentences. Neutral tone, highly detailed...]
 
-> ⚠️ **Disclaimer:** *QuantPulse is an informational research tool only. Nothing presented here constitutes investment advice, a solicitation, or a recommendation to buy or sell any security. Always conduct your own research and consult a SEBI-registered Investment Advisor before making any financial decision.*
+> ⚠️ **Disclaimer:** *MarketMind is an informational research tool only. Nothing presented here constitutes investment advice, a solicitation, or a recommendation to buy or sell any security. Always conduct your own research and consult a SEBI-registered Investment Advisor before making any financial decision.*
 
 ## ABSOLUTE RULES
 - Never say "buy", "sell", "invest", "avoid". No advice.

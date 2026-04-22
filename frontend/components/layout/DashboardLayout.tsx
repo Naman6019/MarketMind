@@ -29,7 +29,7 @@ export default function DashboardLayout() {
       <aside className="sidebar w-[280px] flex-shrink-0 z-20 h-full flex flex-col">
         <div className="brand">
           <div className="logo"></div>
-          <h1>QuantPulse</h1>
+          <h1>MarketMind</h1>
         </div>
         <p className="tagline">Data-driven market context.</p>
 
@@ -43,7 +43,7 @@ export default function DashboardLayout() {
         </div>
 
         <div className="disclaimer-sidebar">
-          <p>QuantPulse is an informational research tool only. Nothing presented constitutes investment advice. Always consult a SEBI-registered Advisor.</p>
+          <p>MarketMind is an informational research tool only. Nothing presented constitutes investment advice. Always consult a SEBI-registered Advisor.</p>
         </div>
       </aside>
 
