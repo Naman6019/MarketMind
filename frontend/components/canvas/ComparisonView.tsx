@@ -46,8 +46,8 @@ export default function ComparisonView({ ids, type }: Props) {
   const periods: Period[] = ['1D', '6M', '1Y', '3Y', '5Y'];
 
   return (
-    <div className="comparison-detail p-6 bg-[var(--panel-bg)] rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden">
-      <div className="mb-8 flex justify-between items-center">
+    <div className="comparison-detail p-6 bg-[var(--panel-bg)] rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden shadow-2xl">
+      <div className="mb-8 flex justify-between items-center px-4">
         <div>
           <h2 className="text-2xl font-bold text-white tracking-tight">Mutual Fund Comparison</h2>
           <p className="text-sm text-gray-400 mt-1">Analyzing performance and risk metrics head-to-head</p>
@@ -58,7 +58,7 @@ export default function ComparisonView({ ids, type }: Props) {
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`px-4 py-2 text-xs font-medium rounded-md transition-all duration-200 ${period === p ? 'bg-[var(--accent-color)] text-black shadow-lg scale-105' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+              className={`px-4 py-2 text-xs font-medium rounded-md transition-all duration-200 ${period === p ? 'bg-[var(--accent-color)] text-black shadow-lg scale-105 font-bold' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
               {p}
             </button>
@@ -74,7 +74,7 @@ export default function ComparisonView({ ids, type }: Props) {
       )}
 
       {error && (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-red-500/10 rounded-xl border border-red-500/20">
+        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-red-500/10 rounded-xl border border-red-500/20 mx-4">
           <svg className="w-12 h-12 text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
@@ -89,8 +89,8 @@ export default function ComparisonView({ ids, type }: Props) {
       )}
       
       {!loading && !error && fundA.meta && fundB.meta && (
-        <div className="flex-1 overflow-y-auto pr-2 custom-scroll space-y-12 pb-12">
-          <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="flex-1 overflow-y-auto px-4 custom-scroll space-y-10 pb-12">
+          <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 bg-black/10 rounded-2xl p-6 border border-white/5">
             <FundComparisonChart 
               schemeCodeA={ids[0]} 
               schemeCodeB={ids[1]} 
@@ -101,7 +101,7 @@ export default function ComparisonView({ ids, type }: Props) {
           </section>
 
           <section className="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
-            <div className="pt-4 border-t border-white/5">
+            <div className="pt-6 border-t border-white/10">
               <FundDetailsPanel 
                 schemeCodeA={ids[0]} 
                 schemeCodeB={ids[1]} 
