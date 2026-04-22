@@ -443,26 +443,38 @@ async def chat_endpoint(req: ChatRequest):
                     ent_lower = entity.lower()
                     resolved = False
                     
-                    # Try hardcoded fallback first for speed/reliability
+                    # 1. Try hardcoded fallback for common funds
                     for key, code in fallback_map.items():
                         if key in ent_lower:
                             resolved_ids.append(code)
                             resolved = True
                             break
                     
-                    if not resolved:
-                        try:
-                            res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').execute()
-                            if res.data and len(res.data) > 0:
-                                best_match = res.data[0]
-                                for row in res.data:
-                                    name = row['scheme_name'].lower()
-                                    if 'direct' in name and 'growth' in name:
-                                        best_match = row
-                                        break
-                                resolved_ids.append(str(best_match['scheme_code']))
-                        except Exception as e:
-                            logger.error(f"Error resolving MF {entity}: {e}")
+                    if resolved: continue
+
+                    # 2. Check if it's a stock ticker (usually uppercase, ends in .NS or .BO or is short)
+                    # Simple heuristic: if it has no spaces and is short, or has .NS/.BO
+                    if " " not in entity or ".ns" in ent_lower or ".bo" in ent_lower:
+                        # Treat as ticker
+                        ticker_clean = entity.split()[0].upper()
+                        resolved_ids.append(ticker_clean)
+                        resolved = True
+                    
+                    if resolved: continue
+
+                    # 3. Try Supabase for Mutual Funds
+                    try:
+                        res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').execute()
+                        if res.data and len(res.data) > 0:
+                            best_match = res.data[0]
+                            for row in res.data:
+                                name = row['scheme_name'].lower()
+                                if 'direct' in name and 'growth' in name:
+                                    best_match = row
+                                    break
+                            resolved_ids.append(str(best_match['scheme_code']))
+                    except Exception as e:
+                        logger.error(f"Error resolving MF {entity}: {e}")
             
             if len(resolved_ids) >= 2:
                 response_json["system_action"] = {
