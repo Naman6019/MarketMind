@@ -69,6 +69,7 @@ def parse_amfi_data(text: str) -> list:
             "nav": nav,
             "nav_date": nav_date,
             "updated_at": datetime.utcnow().isoformat()
+            # Future: add "aum" and "expense_ratio" here once a reliable source is integrated
         })
 
     return updates
