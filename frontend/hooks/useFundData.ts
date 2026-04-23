@@ -23,14 +23,29 @@ export function useFundData(schemeCode: string | null) {
     setError(null);
 
     if (!pendingRequests.has(schemeCode)) {
-      const p = fetch(`https://api.mfapi.in/mf/${schemeCode}`)
+      const p = fetch(`/api/mf/${schemeCode}`)
         .then(res => {
           if (!res.ok) throw new Error(`Failed to fetch data for ${schemeCode}`);
           return res.json();
         })
-        .then((json: FundDataResponse) => {
-          globalCache.set(schemeCode, json);
-          return json;
+        .then((json: any) => {
+          // Map local API response to existing FundDataResponse type
+          const formatted: FundDataResponse = {
+            meta: {
+              fund_house: json.details.fund_house,
+              scheme_type: json.details.category,
+              scheme_category: json.details.sub_category,
+              scheme_code: json.details.scheme_code,
+              scheme_name: json.details.scheme_name
+            },
+            data: json.chartData.map((d: any) => ({
+              date: d.date,
+              nav: d.value.toString()
+            })),
+            status: 'ok'
+          };
+          globalCache.set(schemeCode, formatted);
+          return formatted;
         });
       pendingRequests.set(schemeCode, p);
     }

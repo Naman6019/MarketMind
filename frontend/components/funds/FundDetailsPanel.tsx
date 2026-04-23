@@ -15,7 +15,7 @@ import {
   calculateAlpha
 } from '../../lib/quantUtils';
 import { useCanvasStore } from '@/store/useCanvasStore';
-import { Info, TrendingUp, ShieldAlert, PieChart, Activity } from 'lucide-react';
+import { Info, TrendingUp, ShieldAlert, PieChart, Activity, Wallet } from 'lucide-react';
 
 
 interface Props {
@@ -72,18 +72,24 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
     let beta: number | null = null;
     let alpha: number | null = null;
     let precomputedAum: string | null = null;
+    let precomputedExpenseRatio: string | null = null;
 
     // --- USE PRE-FETCHED DATA FROM CHAT IF AVAILABLE ---
     if (auxiliaryData?.comparison) {
        // Look for this fund in comparison data
        // Names might match partially
-       const fundName = meta?.scheme_name?.toLowerCase();
+       const fundName = meta?.scheme_name?.toLowerCase() || '';
        for (const [key, val] of Object.entries(auxiliaryData.comparison)) {
-          if (fundName?.includes(key.toLowerCase()) || key.toLowerCase().includes(fundName || '')) {
+          const keyLower = key.toLowerCase();
+          const words = keyLower.split(/\s+/).filter(w => w.length > 2);
+          const isFuzzyMatch = words.length > 0 && words.every(word => fundName.includes(word));
+          
+          if (isFuzzyMatch || fundName.includes(keyLower) || keyLower.includes(fundName)) {
              const data = val as any;
              if (data.beta && data.beta !== 'N/A') beta = parseFloat(data.beta);
              if (data.alpha_vs_nifty && data.alpha_vs_nifty !== 'N/A') alpha = parseFloat(data.alpha_vs_nifty);
              if (data.aum && data.aum !== 'N/A') precomputedAum = data.aum.toString();
+             if (data.expense_ratio && data.expense_ratio !== 'N/A') precomputedExpenseRatio = data.expense_ratio.toString();
           }
        }
     }
@@ -140,7 +146,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
     }
 
     return {
-      returns, cagr1Y, cagr3Y, cagr5Y, beta, alpha, precomputedAum,
+      returns, cagr1Y, cagr3Y, cagr5Y, beta, alpha, precomputedAum, precomputedExpenseRatio,
       sharpe: computeSharpe(dailyReturns),
       stdDev: computeStdDev(dailyReturns)
     };
@@ -195,9 +201,21 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
           <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex flex-col gap-1">
               <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total AUM</div>
               <div className="text-xl font-bold text-[var(--accent-color)] tracking-tighter">
-                  {metrics.precomputedAum ? `₹${metrics.precomputedAum} Cr` : (extraMeta?.aum ? `₹${extraMeta.aum} Cr` : 'TBD')}
+                  {metrics.precomputedAum && metrics.precomputedAum !== 'N/A' ? `₹${metrics.precomputedAum} Cr` : (extraMeta?.aum ? `₹${extraMeta.aum} Cr` : 'TBD')}
               </div>
               <div className="text-[10px] text-gray-600 font-medium leading-none">Syncing monthly...</div>
+          </div>
+      </div>
+
+      <div className="grid grid-cols-1">
+          <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Wallet size={16} className="text-gray-400" />
+                <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Expense Ratio</div>
+              </div>
+              <div className="text-lg font-bold text-white tracking-tighter">
+                  {metrics.precomputedExpenseRatio && metrics.precomputedExpenseRatio !== 'N/A' ? `${metrics.precomputedExpenseRatio}%` : (extraMeta?.expense_ratio ? `${extraMeta.expense_ratio}%` : '—')}
+              </div>
           </div>
       </div>
 

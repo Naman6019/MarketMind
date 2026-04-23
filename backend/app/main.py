@@ -453,8 +453,9 @@ async def chat_endpoint(req: ChatRequest):
             if supabase:
                 try:
                     # Clean the entity name for better matching
-                    search_term = entity.lower().replace(' fund', '').replace(' growth', '').strip()
-                    res = supabase.table('mutual_funds').select('*').ilike('scheme_name', f'%{search_term}%').limit(10).execute()
+                    words = entity.lower().replace(' fund', '').replace(' growth', '').strip().split()
+                    search_pattern = f"%{'%'.join(words)}%"
+                    res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(10).execute()
                     if res.data:
                         # Prefer Direct/Growth if multiple results
                         best_match = res.data[0]
@@ -516,7 +517,9 @@ async def chat_endpoint(req: ChatRequest):
             if (not quant_data or "error" in quant_data) and supabase:
                 try:
                     search_term = ticker or req.query
-                    res = supabase.table('mutual_funds').select('*').ilike('scheme_name', f'%{search_term}%').limit(1).execute()
+                    words = search_term.lower().replace(' fund', '').replace(' growth', '').strip().split()
+                    search_pattern = f"%{'%'.join(words)}%"
+                    res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(1).execute()
                     if res.data:
                         fund = res.data[0]
                         quant_data = {
@@ -563,7 +566,9 @@ async def chat_endpoint(req: ChatRequest):
                 if resolved: continue
                 if supabase:
                     try:
-                        res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', f'%{entity}%').execute()
+                        words = entity.lower().replace(' fund', '').replace(' growth', '').strip().split()
+                        search_pattern = f"%{'%'.join(words)}%"
+                        res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', search_pattern).execute()
                         if res.data and len(res.data) > 0:
                             best_match = res.data[0]
                             for row in res.data:

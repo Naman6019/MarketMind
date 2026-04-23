@@ -16,7 +16,29 @@ export async function GET(request: Request, context: { params: Promise<{ schemeC
       return NextResponse.json({ error: 'Mutual fund not found' }, { status: 404 });
     }
 
-    const history = await fetchMFHistory(schemeCode);
+    // 1. Try to fetch history from local Supabase table
+    const { data: localHistory } = await supabase
+      .from('mutual_fund_history')
+      .select('nav, nav_date')
+      .eq('scheme_code', parseInt(schemeCode, 10))
+      .order('nav_date', { ascending: false });
+
+    let history = (localHistory || []).map(h => ({
+      date: h.nav_date.split('-').reverse().join('-'), // Convert YYYY-MM-DD to DD-MM-YYYY
+      nav: h.nav.toString()
+    }));
+
+    // 2. Fallback to mfapi.in if we have very little history (e.g. less than 10 days)
+    if (history.length < 10) {
+      try {
+        const externalHistory = await fetchMFHistory(schemeCode);
+        if (externalHistory && externalHistory.length > history.length) {
+          history = externalHistory;
+        }
+      } catch (e) {
+        console.error("External fallback failed:", e);
+      }
+    }
     
     // Calculate returns
     const cagr1Y = calculateCAGR(history, 1);

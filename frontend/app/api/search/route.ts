@@ -14,10 +14,13 @@ export async function GET(request: Request) {
     let results: any[] = [];
 
     if (type === 'all' || type === 'mf') {
+      const words = query.split(/\s+/).filter(w => w.length > 0);
+      const searchPattern = `%${words.join('%')}%`;
+
       const { data: mfData } = await supabase
         .from('mutual_funds')
         .select('scheme_code, scheme_name, fund_house')
-        .or(`scheme_name.ilike.%${query}%,fund_house.ilike.%${query}%`)
+        .or(`scheme_name.ilike.${searchPattern},fund_house.ilike.${searchPattern}`)
         .limit(10);
       
       if (mfData) {

@@ -2,8 +2,8 @@ name: EOD Stock Data Fetch
 
 on:
   schedule:
-    # Runs at 4:30 PM IST (11:00 UTC) on weekdays
-    - cron: '0 11 * * 1-5'
+    # Runs at 6:00 PM IST (12:30 UTC) on weekdays to ensure NSE Bhavcopy is published
+    - cron: '30 12 * * 1-5'
   workflow_dispatch: # allows manual trigger from GitHub UI
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance pandas supabase python-dotenv
+        run: pip install yfinance pandas supabase python-dotenv requests jugaad-data nsetools
 
       - name: Run EOD Fetcher
         env:
