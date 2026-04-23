@@ -133,38 +133,66 @@ If a filter is not mentioned, exclude it from screener_filters. Default historic
     return {"intent": "general", "ticker": None}
 
 def calculate_beta(stock_returns, nifty_returns):
-    if len(stock_returns) < 2 or len(stock_returns) != len(nifty_returns):
+    if len(stock_returns) < 10 or len(stock_returns) != len(nifty_returns):
         return 1.0
     try:
-        cov = np.cov(stock_returns, nifty_returns)[0][1]
-        var = np.var(nifty_returns)
-        if var == 0: return 1.0
-        return round(float(cov / var), 2)
+        # Use simple linear regression for beta (Slope of Stock Returns vs Market Returns)
+        # Handle cases with constant returns or zero variance
+        if np.var(nifty_returns) < 1e-9:
+            return 1.0
+        
+        cov_matrix = np.cov(stock_returns, nifty_returns)
+        if cov_matrix.shape == (2, 2):
+            cov = cov_matrix[0][1]
+            var = np.var(nifty_returns)
+            beta = cov / var
+            # Sanity check: Beta for a Flexi Cap equity fund should not be near zero
+            # If it is, it might indicate bad data alignment
+            if abs(beta) < 0.05:
+                return 1.0
+            return round(float(beta), 2)
+        return 1.0
     except:
         return 1.0
 
 def calculate_alpha_beta_v2(stock_hist, nifty_hist):
-    if stock_hist.empty or nifty_hist.empty or len(stock_hist) < 5 or len(nifty_hist) < 5:
+    if stock_hist.empty or nifty_hist.empty or len(stock_hist) < 20 or len(nifty_hist) < 20:
         return {"alpha": "N/A", "beta": "N/A"}
     
-    stock_returns = stock_hist['Close'].pct_change().dropna()
-    nifty_returns = nifty_hist['Close'].pct_change().dropna()
+    # Pre-process: ensure we have numeric data and no NaNs in Close
+    s_close = stock_hist['Close'].ffill().dropna()
+    n_close = nifty_hist['Close'].ffill().dropna()
     
+    stock_returns = s_close.pct_change().dropna()
+    nifty_returns = n_close.pct_change().dropna()
+    
+    # Align returns on the same dates
     aligned = stock_returns.to_frame('stock').join(nifty_returns.to_frame('nifty'), how='inner')
     
-    if len(aligned) < 2: return {"alpha": "N/A", "beta": "N/A"}
+    if len(aligned) < 10: return {"alpha": "N/A", "beta": "N/A"}
     
     beta = calculate_beta(aligned['stock'].tolist(), aligned['nifty'].tolist())
     
-    stock_ret = ((stock_hist['Close'].iloc[-1] - stock_hist['Close'].iloc[0]) / stock_hist['Close'].iloc[0])
-    nifty_ret = ((nifty_hist['Close'].iloc[-1] - nifty_hist['Close'].iloc[0]) / nifty_hist['Close'].iloc[0])
+    # Annualized Returns for Alpha
+    # Using the first and last valid prices to get total return
+    stock_ret_total = (s_close.iloc[-1] - s_close.iloc[0]) / s_close.iloc[0]
+    nifty_ret_total = (n_close.iloc[-1] - n_close.iloc[0]) / n_close.iloc[0]
     
-    days = (stock_hist.index[-1] - stock_hist.index[0]).days
-    rf_period = (0.065 / 365) * days
+    days = (s_close.index[-1] - s_close.index[0]).days
+    if days <= 0: return {"alpha": "N/A", "beta": beta}
     
-    alpha = (stock_ret - (rf_period + beta * (nifty_ret - rf_period))) * 100
+    # Annualize the returns
+    years = days / 365.25
+    stock_ann_ret = (1 + stock_ret_total) ** (1 / years) - 1
+    nifty_ann_ret = (1 + nifty_ret_total) ** (1 / years) - 1
     
-    return {"alpha": round(alpha, 2), "beta": beta}
+    # Risk-free rate (approx 6.5% for India)
+    rf = 0.065
+    
+    # Alpha = R_p - [R_f + Beta * (R_m - R_f)]
+    alpha = (stock_ann_ret - (rf + beta * (nifty_ann_ret - rf))) * 100
+    
+    return {"alpha": round(alpha, 2), "beta": beta, "period_years": round(years, 1)}
 
 def is_market_open() -> bool:
     now = datetime.now(IST)
@@ -223,7 +251,8 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
         info = stock.info
         
         hist = stock.history(period=period)
-        calc_period = "1y" if period in ["1d", "5d", "1mo", "3mo", "6mo"] else period
+        # Use 3y for stable risk metrics calculation
+        calc_period = "3y"
         hist_calc = stock.history(period=calc_period)
         nifty_hist = nifty.history(period=calc_period)
         
@@ -244,6 +273,7 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
             "market_cap": info.get("marketCap", "N/A"),
             "beta": risk_metrics["beta"],
             "alpha_vs_nifty": risk_metrics["alpha"],
+            "risk_period": f"{risk_metrics.get('period_years', 3)}Y",
             "historical_period": period,
             "rsi_14d": "N/A",
             "tv_recommendation": "N/A",
@@ -365,10 +395,11 @@ You are synthesizing data into a final response.
 ## SYNTHESIS RULES
 1. Open with a one-line market context statement.
 2. Present quantitative data, comparison data, or screener results in a clean, scannable markdown table.
-3. Follow with relevant news (if any), newest first. Including the [Sentiment] tag if provided.
-4. Close with a Trend Observation — Provide DEEP, ANALYTICAL reasoning here. Do not just regurgitate the numbers; explain exactly *why* the numbers matter together. Make your analysis highly educational, uncovering the 'why' behind the metrics. Provide well-reasoned hypotheses, not shallow summaries.
-5. Append the complete mandatory disclaimer at the very end. Format it precisely as a blockquote using `> ⚠️ **Disclaimer:**`.
-6. Ensure neat spacing. ALWAYS use double blank lines (`\n\n`) between the Snapshot, Table, News List, Trend Observation, and the final Disclaimer.
+3. If only ONE entity is being analyzed (even if the intent was comparison), DO NOT include a 'Compare with' or secondary value column. Only show the metrics for that specific entity.
+4. Follow with relevant news (if any), newest first. Including the [Sentiment] tag if provided.
+5. Close with a Trend Observation — Provide DEEP, ANALYTICAL reasoning here. Do not just regurgitate the numbers; explain exactly *why* the numbers matter together. Make your analysis highly educational, uncovering the 'why' behind the metrics. Provide well-reasoned hypotheses, not shallow summaries.
+6. Append the complete mandatory disclaimer at the very end. Format it precisely as a blockquote using `> ⚠️ **Disclaimer:**`.
+7. Ensure neat spacing. ALWAYS use double blank lines (`\n\n`) between the Snapshot, Table, News List, Trend Observation, and the final Disclaimer.
 
 ## RESPONSE FORMAT MUST BE EXACTLY LIKE THIS:
 
@@ -394,6 +425,7 @@ You are synthesizing data into a final response.
 - Never say "buy", "sell", "invest", "avoid". No advice.
 - Timestamp everything. 
 - Use the data provided. DO NOT HALLUCINATE NUMBERS. If data contains an "error" or is empty, clearly state "Data Unavailable" inside the table cells. Under NO circumstance should you generate generic or fake financial metrics.
+- Label Alpha and Beta with their time period (e.g., 'Alpha (1Y)') based on the data provided.
 """
     
     context = f"""
@@ -482,12 +514,17 @@ async def chat_endpoint(req: ChatRequest):
             yf_ticker = await resolve_mf_ticker(entity)
             if yf_ticker:
                 try:
-                    # Only fetch 1y history for speed and to avoid rate limits
+                    # Fetch 3y history for more stable metrics
                     stock = yf.Ticker(yf_ticker)
-                    hist = stock.history(period="1y")
+                    hist = stock.history(period="3y")
                     nifty = yf.Ticker("^NSEI")
-                    nifty_hist = nifty.history(period="1y")
-                    risk_metrics = calculate_alpha_beta_v2(hist, nifty_hist)
+                    nifty_hist = nifty.history(period="3y")
+                    metrics = calculate_alpha_beta_v2(hist, nifty_hist)
+                    risk_metrics = {
+                        "beta": metrics["beta"],
+                        "alpha_vs_nifty": metrics["alpha"],
+                        "risk_period": f"{metrics.get('period_years', 3)}Y"
+                    }
                     # Add AUM if yfinance has it but DB doesn't
                     if db_data and (not db_data.get("aum") or db_data["aum"] == "N/A"):
                         db_data["aum"] = stock.info.get("totalAssets", "N/A")
