@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { ChevronRight, ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -12,6 +12,11 @@ import ComparisonView from '@/components/canvas/ComparisonView';
 export default function DashboardLayout() {
   const { isCanvasOpen, activeView, selectedIds, toggleCanvas, closeCanvas } = useCanvasStore();
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+
+  // Wake up the backend on load
+  useEffect(() => {
+    fetch('/api/keepalive').catch(() => {});
+  }, []);
 
   const renderCanvasContent = () => {
     switch (activeView) {

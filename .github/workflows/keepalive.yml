@@ -2,7 +2,8 @@ name: Keep Render Alive
 
 on:
   schedule:
-    - cron: '*/14 * * * *'
+    # Runs every 10 minutes (safe buffer for Render's 15min spin-down)
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,9 +12,11 @@ jobs:
     steps:
       - name: Ping MarketMind API
         run: |
+          # Use timestamp as cache-buster
+          TIMESTAMP=$(date +%s)
           response=$(curl -s -o /dev/null -w "%{http_code}" \
-            https://marketmind-hz03.onrender.com/health)
-          echo "Health check status: $response"
+            "https://marketmind-hz03.onrender.com/health?t=$TIMESTAMP")
+          echo "Health check status for $TIMESTAMP: $response"
           if [ "$response" != "200" ]; then
             echo "WARNING: API returned $response"
             exit 1
