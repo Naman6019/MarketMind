@@ -460,6 +460,39 @@ async def trigger_eod_fetch(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_eod_fetch)
     return {"message": "Background fetch process triggered successfully."}
 
+async def get_mf_history_df(scheme_code: int, days: int = 1100):
+    """Fetch MF history from Supabase and return as a DataFrame compatible with risk functions."""
+    if not supabase: return pd.DataFrame()
+    try:
+        # Fetch up to 3 years of data (approx 1100 days)
+        res = supabase.table('mutual_fund_history').select('nav, nav_date').eq('scheme_code', scheme_code).order('nav_date', desc=True).limit(days).execute()
+        if res.data:
+            df = pd.DataFrame(res.data)
+            df['date'] = pd.to_datetime(df['nav_date'])
+            df = df.sort_values('date')
+            df.rename(columns={'nav': 'Close'}, inplace=True)
+            df.set_index('date', inplace=True)
+            return df
+    except Exception as e:
+        logger.error(f"Failed to fetch local MF history for {scheme_code}: {e}")
+    return pd.DataFrame()
+
+async def get_nifty_history_df(days: int = 1100):
+    """Fetch NIFTY history from Supabase stock_history table."""
+    if not supabase: return pd.DataFrame()
+    try:
+        res = supabase.table('stock_history').select('close, date').eq('symbol', 'NIFTY').order('date', desc=True).limit(days).execute()
+        if res.data:
+            df = pd.DataFrame(res.data)
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date')
+            df.rename(columns={'close': 'Close'}, inplace=True)
+            df.set_index('date', inplace=True)
+            return df
+    except Exception as e:
+        logger.error(f"Failed to fetch local NIFTY history: {e}")
+    return pd.DataFrame()
+
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
     intent_info = await route_query(req.query)
@@ -478,97 +511,126 @@ async def chat_endpoint(req: ChatRequest):
         
     elif intent == "compare":
         entities = intent_info.get("compare_entities", [])
-        comparison_results = {}
-        for entity in entities:
-            # DATABASE FIRST STRATEGY (Supabase has 14k+ rows)
-            db_data = None
-            if supabase:
-                try:
-                    # Clean the entity name for better matching
-                    words = entity.lower().replace(' fund', '').replace(' growth', '').strip().split()
-                    search_pattern = f"%{'%'.join(words)}%"
-                    res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(10).execute()
-                    if res.data:
-                        # Prefer Direct/Growth if multiple results
-                        best_match = res.data[0]
-                        for row in res.data:
-                            name = row['scheme_name'].lower()
-                            if 'direct' in name and 'growth' in name:
-                                best_match = row
-                                break
-                        db_data = {
-                            "name": best_match['scheme_name'],
-                            "nav": best_match['nav'],
-                            "nav_date": best_match['nav_date'],
-                            "category": best_match['category'],
-                            "fund_house": best_match['fund_house'],
-                            "expense_ratio": best_match.get('expense_ratio', "N/A"),
-                            "aum": best_match.get('aum', "N/A"),
-                            "source": "MarketMind DB"
-                        }
-                except Exception as e:
-                    logger.error(f"Supabase compare error: {e}")
+        
+        # If user only provided one entity, treat as a single quant lookup
+        if len(entities) == 1:
+            intent = "quant"
+            ticker = entities[0]
+        else:
+            comparison_results = {}
+            # Pre-fetch Nifty history once for all comparisons
+            n_hist_local = await get_nifty_history_df()
+            
+            for entity in entities:
+                db_data = None
+                scheme_code = None
+                if supabase:
+                    try:
+                        words = entity.lower().replace(' fund', '').replace(' growth', '').strip().split()
+                        search_pattern = f"%{'%'.join(words)}%"
+                        res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(10).execute()
+                        if res.data:
+                            best_match = res.data[0]
+                            for row in res.data:
+                                name = row['scheme_name'].lower()
+                                if 'direct' in name and 'growth' in name:
+                                    best_match = row; break
+                            scheme_code = best_match['scheme_code']
+                            db_data = {
+                                "name": best_match['scheme_name'],
+                                "nav": best_match['nav'],
+                                "nav_date": best_match['nav_date'],
+                                "category": best_match['category'],
+                                "fund_house": best_match['fund_house'],
+                                "expense_ratio": best_match.get('expense_ratio', "N/A"),
+                                "aum": best_match.get('aum', "N/A"),
+                                "source": "MarketMind DB"
+                            }
+                    except Exception as e:
+                        logger.error(f"Supabase compare error: {e}")
 
-            # Risk Metrics from yfinance (Beta/Alpha)
-            risk_metrics = {}
-            yf_ticker = await resolve_mf_ticker(entity)
-            if yf_ticker:
+                risk_metrics = {}
+                # Try YFinance first, then fallback to local DB history
+                yf_ticker = await resolve_mf_ticker(entity)
+                
                 try:
-                    # Fetch 3y history for more stable metrics
-                    stock = yf.Ticker(yf_ticker)
-                    hist = stock.history(period="3y")
-                    nifty = yf.Ticker("^NSEI")
-                    nifty_hist = nifty.history(period="3y")
-                    metrics = calculate_alpha_beta_v2(hist, nifty_hist)
-                    risk_metrics = {
-                        "beta": metrics["beta"],
-                        "alpha_vs_nifty": metrics["alpha"],
-                        "risk_period": f"{metrics.get('period_years', 3)}Y"
-                    }
-                    # Add AUM if yfinance has it but DB doesn't
-                    if db_data and (not db_data.get("aum") or db_data["aum"] == "N/A"):
-                        db_data["aum"] = stock.info.get("totalAssets", "N/A")
+                    hist = pd.DataFrame()
+                    nifty_hist = pd.DataFrame()
+                    
+                    if yf_ticker:
+                        stock = yf.Ticker(yf_ticker)
+                        hist = stock.history(period="3y")
+                        nifty = yf.Ticker("^NSEI")
+                        nifty_hist = nifty.history(period="3y")
+                        # Add AUM if missing
+                        if db_data and (not db_data.get("aum") or db_data["aum"] == "N/A"):
+                            db_data["aum"] = stock.info.get("totalAssets", "N/A")
+                    
+                    # If YFinance failed but we have a scheme_code, use local history
+                    if hist.empty and scheme_code:
+                        hist = await get_mf_history_df(scheme_code)
+                        nifty_hist = n_hist_local
+                        
+                    if not hist.empty and not nifty_hist.empty:
+                        metrics = calculate_alpha_beta_v2(hist, nifty_hist)
+                        risk_metrics = {
+                            "beta": metrics["beta"],
+                            "alpha_vs_nifty": metrics["alpha"],
+                            "risk_period": f"{metrics.get('period_years', 3)}Y"
+                        }
                 except:
                     pass
 
-            if db_data:
-                # Merge risk metrics into db_data
-                db_data.update(risk_metrics)
-                comparison_results[entity] = db_data
-            elif yf_ticker:
-                # Fallback to yfinance if DB match failed but ticker exists
-                comparison_results[entity] = fetch_quant_data(yf_ticker, period)
-            else:
-                comparison_results[entity] = {"error": "Data not found for this entity"}
-                
-        quant_data = {"comparison": comparison_results}
+                if db_data:
+                    db_data.update(risk_metrics)
+                    comparison_results[entity] = db_data
+                elif yf_ticker:
+                    comparison_results[entity] = fetch_quant_data(yf_ticker, period)
+                else:
+                    comparison_results[entity] = {"error": "Data not found for this entity"}
+                    
+            quant_data = {"comparison": comparison_results}
+    
+    # Handle single quant lookup (or forced single comparison)
+    if intent in ["quant", "both"]:
+        # Try resolution
+        yf_ticker = await resolve_mf_ticker(ticker or req.query)
+        final_ticker = yf_ticker if yf_ticker else ticker
         
-    else:
-        # Check if intent requires quant but ticker was name
-        if intent in ["quant", "both"]:
-            yf_ticker = await resolve_mf_ticker(ticker or req.query)
-            final_ticker = yf_ticker if yf_ticker else ticker
-            quant_data = fetch_quant_data(final_ticker, period)
-            
-            # If yfinance failed or ticker is missing, try Supabase for mutual fund match
-            if (not quant_data or "error" in quant_data) and supabase:
-                try:
-                    search_term = ticker or req.query
-                    words = search_term.lower().replace(' fund', '').replace(' growth', '').strip().split()
-                    search_pattern = f"%{'%'.join(words)}%"
-                    res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(1).execute()
-                    if res.data:
-                        fund = res.data[0]
-                        quant_data = {
-                            "name": fund['scheme_name'],
-                            "price": fund['nav'],
-                            "date": fund['nav_date'],
-                            "fund_house": fund['fund_house'],
-                            "aum": fund.get('aum', "N/A"),
-                            "expense_ratio": fund.get('expense_ratio', "N/A"),
-                            "source": "MarketMind DB"
-                        }
-                except: pass
+        # Primary: YFinance/Local Snapshot
+        quant_data = fetch_quant_data(final_ticker, period)
+        
+        # Fallback to Supabase
+        if (not quant_data or "error" in quant_data) and supabase:
+            try:
+                search_term = ticker or req.query
+                words = search_term.lower().replace(' fund', '').replace(' growth', '').strip().split()
+                search_pattern = f"%{'%'.join(words)}%"
+                res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(1).execute()
+                if res.data:
+                    fund = res.data[0]
+                    scheme_code = fund['scheme_code']
+                    quant_data = {
+                        "name": fund['scheme_name'],
+                        "price": fund['nav'],
+                        "date": fund['nav_date'],
+                        "fund_house": fund['fund_house'],
+                        "aum": fund.get('aum', "N/A"),
+                        "expense_ratio": fund.get('expense_ratio', "N/A"),
+                        "source": "MarketMind DB"
+                    }
+                    
+                    # Compute risk metrics locally for single entity too!
+                    hist = await get_mf_history_df(scheme_code)
+                    nifty_hist = await get_nifty_history_df()
+                    if not hist.empty and not nifty_hist.empty:
+                        metrics = calculate_alpha_beta_v2(hist, nifty_hist)
+                        quant_data.update({
+                            "beta": metrics["beta"],
+                            "alpha_vs_nifty": metrics["alpha"],
+                            "risk_period": f"{metrics.get('period_years', 3)}Y"
+                        })
+            except: pass
             
         if intent in ["news", "both"]:
             news_items = fetch_news(req.query, ticker)
