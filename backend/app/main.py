@@ -177,6 +177,9 @@ def calculate_beta(stock_returns, nifty_returns):
 def calculate_alpha_beta_v2(stock_hist, nifty_hist):
     if stock_hist.empty or nifty_hist.empty or len(stock_hist) < 20 or len(nifty_hist) < 20:
         return {"alpha": "N/A", "beta": "N/A"}
+
+    stock_hist = _normalize_price_df_index(stock_hist)
+    nifty_hist = _normalize_price_df_index(nifty_hist)
     
     # Pre-process: ensure we have numeric data and no NaNs in Close
     s_close = stock_hist['Close'].ffill().dropna()
@@ -212,6 +215,17 @@ def calculate_alpha_beta_v2(stock_hist, nifty_hist):
     alpha = (stock_ann_ret - (rf + beta * (nifty_ann_ret - rf))) * 100
     
     return {"alpha": round(alpha, 2), "beta": beta, "period_years": round(years, 1)}
+
+def _normalize_price_df_index(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    normalized = df.copy()
+    normalized.index = pd.to_datetime(normalized.index, errors="coerce")
+    normalized = normalized[normalized.index.notna()]
+    if getattr(normalized.index, "tz", None) is not None:
+        normalized.index = normalized.index.tz_convert(None)
+    normalized.index = normalized.index.normalize()
+    return normalized.sort_index()
 
 def is_market_open() -> bool:
     now = datetime.now(IST)
@@ -602,7 +616,7 @@ async def get_mf_history_df(scheme_code: int, days: int = 1100):
             df["Close"] = pd.to_numeric(df["nav"], errors="coerce")
             df = df.dropna(subset=["date", "Close"]).sort_values("date")
             df.set_index("date", inplace=True)
-            return df[["Close"]]
+            return _normalize_price_df_index(df[["Close"]])
         except Exception as e:
             logger.warning(f"MFAPI history fallback failed for {scheme_code}: {e}")
             return pd.DataFrame()
@@ -621,7 +635,7 @@ async def get_mf_history_df(scheme_code: int, days: int = 1100):
                 remote_df = await fetch_remote_history()
                 if not remote_df.empty:
                     return remote_df.tail(days)
-            return df
+            return _normalize_price_df_index(df)
     except Exception as e:
         logger.error(f"Failed to fetch local MF history for {scheme_code}: {e}")
     return await fetch_remote_history()
@@ -633,7 +647,7 @@ async def get_nifty_history_df(days: int = 1100):
             hist = yf.Ticker("^NSEI").history(period="5y")
             if hist.empty:
                 return pd.DataFrame()
-            return hist[["Close"]].tail(days)
+            return _normalize_price_df_index(hist[["Close"]]).tail(days)
         except Exception as e:
             logger.warning(f"YFinance NIFTY fallback failed: {e}")
             return pd.DataFrame()
@@ -651,7 +665,7 @@ async def get_nifty_history_df(days: int = 1100):
                 yf_df = fetch_yfinance_nifty()
                 if not yf_df.empty:
                     return yf_df
-            return df
+            return _normalize_price_df_index(df)
     except Exception as e:
         logger.error(f"Failed to fetch local NIFTY history: {e}")
     return fetch_yfinance_nifty()
