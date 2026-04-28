@@ -1,15 +1,19 @@
-# Python
-venv/
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-
 # Node
 node_modules/
 .next/
 dist/
 build/
+
+# Vercel
+.vercel/
+.vercel_python_packages/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
 
 # Environment
 .env
@@ -18,13 +22,8 @@ build/
 .env.production
 *.log
 
-# Vercel
-.vercel/
-.vercel_python_packages/
-
 # Misc
 .DS_Store
-*.pem
 
 # Test Envs
 test_env/

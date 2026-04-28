@@ -1,15 +1,22 @@
 # Deployment
 
+MarketMind utilizes a split deployment architecture due to the differing runtime requirements of the frontend and backend.
+
 ## Frontend (Vercel)
-- Deployed from the `frontend/` directory.
-- `app/api/` handlers run as Node.js serverless functions.
-- Uses `NEXT_PUBLIC_API_URL` to route requests to the backend.
+- **Status**: Active Auto-Deploy.
+- **Root**: Deployed from the `frontend/` directory.
+- **Runtime**: Next.js App Router; `/api/` handlers run as Node.js serverless functions.
+- **Environment**: Configured via Vercel Dashboard. Depends on `NEXT_PUBLIC_API_URL` pointing to the Render backend URL.
 
 ## Backend (Render)
-- Runs `backend/app/main.py` using Uvicorn.
-- Can spin down on free tiers. The frontend `/api/keepalive` ping helps mitigate this, but first-heavy-query latency remains an issue.
+- **Status**: Active Auto-Deploy.
+- **Root**: Deployed from the `backend/` directory.
+- **Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT` (managed by `render.yaml`).
+- **Keepalive**: The frontend pings `/api/keepalive` to prevent the free tier Render instance from spinning down. First-heavy-query latency may still occur.
 
-## GitHub Actions
-- `fetch_stocks.yml`: Runs `scripts/run_fetch.py` daily at 16:30 IST.
-- `mf-sync.yml`: Runs MF metadata synchronization.
-- **Rule**: Do not move cron logic to Vercel crons. Scripts require a Python runtime.
+## Scheduled Jobs (GitHub Actions)
+- **Why**: Vercel serverless functions lack native Python runtime support, which is necessary for the EOD and MF syncing scripts.
+- **Workflows**:
+  - `fetch_stocks.yml`: Runs `scripts/run_fetch.py` daily at 16:30 IST (11:00 UTC).
+  - `mf-sync.yml`: Triggers mutual fund metadata and NAV updates.
+- **Secrets**: Handled via GitHub Repository Secrets.

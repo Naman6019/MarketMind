@@ -1,13 +1,13 @@
-# Database Schema (Supabase)
+# Database Schema
 
-The core data store uses PostgreSQL (via Supabase).
+MarketMind uses Supabase (PostgreSQL) as its primary data store. 
+*(Note: Writes are kept server-side only via backend scripts or service-role environments).*
 
 ## Known Tables
-- `nifty_stocks`: Universe of supported Nifty Large/Mid/Small cap stocks.
-- `stock_history`: Historical price and volume data used for EOD calculations and local NIFTY history.
-- `mutual_funds`: Metadata for mutual funds (scheme codes, names, categories).
-- `mutual_fund_history`: Historical NAV data used for MF charting, Alpha, and Beta computations.
+- `nifty_stocks`: Universe of supported Nifty Large/Mid/Small cap and Total Market stocks.
+- `stock_history`: Historical price and volume data. Used for EOD calculations and local NIFTY performance baselines.
+- `mutual_funds`: Metadata for mutual funds (scheme codes, names, categories, TER, AUM).
+- `mutual_fund_history`: Historical NAV data used for MF charting, returns, Alpha, and Beta computations.
 
-## Notes
-- `stock_history` is used to build NIFTY performance baselines locally.
-- Use `grep_search("\.table\(", include="*.py")` to discover precise queries before interacting with Supabase tables.
+## TODOs
+- **Holdings/Overlap**: Schema details for portfolio overlap features are incomplete or rely on partial AMFI disclosures.
