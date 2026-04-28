@@ -4,15 +4,42 @@ import { calculateCAGR, calculateRiskMetrics } from '@/lib/mf/returns';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request, context: { params: Promise<{ schemeCode: string }>}) {
-  const { schemeCode } = await context.params;
+async function fetchFromBackend(schemeCode: string) {
+  const target = process.env.NODE_ENV === 'development'
+    ? `http://127.0.0.1:8000/api/mf/${schemeCode}`
+    : `${process.env.NEXT_PUBLIC_API_URL}/api/mf/${schemeCode}`;
 
   try {
+    const res = await fetch(target, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json?.details || !Array.isArray(json?.chartData)) return null;
+    return json;
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(_request: Request, context: { params: Promise<{ schemeCode: string }>}) {
+  const { schemeCode } = await context.params;
+  if (!/^\d+$/.test(schemeCode)) {
+    return NextResponse.json({ error: 'Invalid scheme code' }, { status: 400 });
+  }
+
+  try {
+    // Primary source: backend API uses the same DB path as chat resolution.
+    const backendJson = await fetchFromBackend(schemeCode);
+    if (backendJson) {
+      return NextResponse.json(backendJson);
+    }
+
+    // Fallback: local Supabase query (for local-only runs)
     const { data: mfDetails, error } = await supabase
       .from('mutual_funds')
       .select('*')
       .eq('scheme_code', parseInt(schemeCode, 10))
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (error || !mfDetails) {
       return NextResponse.json({ error: 'Mutual fund not found' }, { status: 404 });

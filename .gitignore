@@ -6,14 +6,17 @@ __pycache__/
 .pytest_cache/
 
 # Node
-frontend/node_modules/
-frontend/.next/
-frontend/out/
+node_modules/
+.next/
+dist/
+build/
 
 # Environment
 .env
 .env.local
-*.env
+.env.development
+.env.production
+*.log
 
 # Vercel
 .vercel/
@@ -22,8 +25,14 @@ frontend/out/
 # Misc
 .DS_Store
 *.pem
-node_modules
 
 # Test Envs
 test_env/
 
+# Explicit Docs & Configs to Keep
+!README.md
+!AGENTS.md
+!GEMINI.md
+!docs/
+!prompts/
+!.env.example

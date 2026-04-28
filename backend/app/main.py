@@ -7,7 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List
 from dotenv import load_dotenv
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
@@ -604,6 +604,95 @@ async def get_nifty_history_df(days: int = 1100):
     except Exception as e:
         logger.error(f"Failed to fetch local NIFTY history: {e}")
     return pd.DataFrame()
+
+def _compute_cagr_from_close(close_series: pd.Series, years: int) -> float | None:
+    if close_series.empty:
+        return None
+    current_date = close_series.index[-1]
+    target_date = current_date - pd.DateOffset(years=years)
+    historical = close_series[close_series.index <= target_date]
+    if historical.empty:
+        return None
+    current_val = float(close_series.iloc[-1])
+    past_val = float(historical.iloc[-1])
+    if past_val <= 0:
+        return None
+    cagr = (current_val / past_val) ** (1 / years) - 1
+    return round(cagr * 100, 2)
+
+def _compute_nav_risk_metrics(close_series: pd.Series, risk_free_rate: float = 0.06):
+    close_series = close_series.astype(float).dropna()
+    if len(close_series) < 2:
+        return None
+
+    returns = close_series.pct_change().dropna()
+    if returns.empty:
+        return None
+
+    mean_daily = float(returns.mean())
+    std_daily = float(returns.std(ddof=0))
+    ann_std = std_daily * np.sqrt(252)
+    ann_return = mean_daily * 252
+
+    sharpe = None if ann_std == 0 else (ann_return - risk_free_rate) / ann_std
+    downside = returns[returns < 0]
+    downside_std = float(np.sqrt(np.mean(np.square(downside)))) * np.sqrt(252) if len(downside) > 0 else 0.0
+    sortino = None if downside_std == 0 else (ann_return - risk_free_rate) / downside_std
+
+    running_max = close_series.cummax()
+    drawdown = (running_max - close_series) / running_max.replace(0, np.nan)
+    max_drawdown = float(drawdown.max()) if not drawdown.empty else 0.0
+
+    return {
+        "stdDev": round(ann_std, 4),
+        "sharpeRatio": round(sharpe, 2) if sharpe is not None else None,
+        "sortinoRatio": round(sortino, 2) if sortino is not None else None,
+        "maxDrawdown": round(max_drawdown, 4)
+    }
+
+@app.get("/api/mf/{scheme_code}")
+async def get_mutual_fund_details(scheme_code: int):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized")
+
+    try:
+        fund_res = supabase.table('mutual_funds').select('*').eq('scheme_code', scheme_code).limit(1).execute()
+        if not fund_res.data:
+            raise HTTPException(status_code=404, detail="Mutual fund not found")
+
+        details = fund_res.data[0]
+        hist_df = await get_mf_history_df(scheme_code)
+        close_series = hist_df["Close"] if not hist_df.empty else pd.Series(dtype=float)
+
+        returns = {
+            "1Y": _compute_cagr_from_close(close_series, 1),
+            "3Y": _compute_cagr_from_close(close_series, 3),
+            "5Y": _compute_cagr_from_close(close_series, 5)
+        }
+        risk_metrics = _compute_nav_risk_metrics(close_series)
+
+        chart_df = hist_df.sort_index().tail(250) if not hist_df.empty else pd.DataFrame()
+        chart_data = []
+        if not chart_df.empty:
+            chart_data = [
+                {
+                    "date": idx.strftime("%d-%m-%Y"),
+                    "value": round(float(val), 4)
+                }
+                for idx, val in chart_df["Close"].items()
+            ]
+
+        return {
+            "details": details,
+            "returns": returns,
+            "riskMetrics": risk_metrics,
+            "chartData": chart_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"MF details endpoint error for {scheme_code}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):

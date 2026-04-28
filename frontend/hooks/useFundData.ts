@@ -19,16 +19,30 @@ export function useFundData(schemeCode: string | null) {
     }
 
     let isMounted = true;
+    setData(null);
     setLoading(true);
     setError(null);
 
     if (!pendingRequests.has(schemeCode)) {
       const p = fetch(`/api/mf/${schemeCode}`)
-        .then(res => {
-          if (!res.ok) throw new Error(`Failed to fetch data for ${schemeCode}`);
+        .then(async res => {
+          if (!res.ok) {
+            const body = await res.text();
+            try {
+              const parsed = JSON.parse(body);
+              const message = parsed?.detail || parsed?.error || `Failed to fetch data for ${schemeCode}`;
+              throw new Error(message);
+            } catch {
+              throw new Error(body || `Failed to fetch data for ${schemeCode}`);
+            }
+          }
           return res.json();
         })
         .then((json: any) => {
+          if (!json?.details || !Array.isArray(json?.chartData)) {
+            throw new Error(`Failed to fetch data for ${schemeCode}`);
+          }
+
           // Map local API response to existing FundDataResponse type
           const formatted: FundDataResponse = {
             meta: {
@@ -46,6 +60,9 @@ export function useFundData(schemeCode: string | null) {
           };
           globalCache.set(schemeCode, formatted);
           return formatted;
+        })
+        .finally(() => {
+          pendingRequests.delete(schemeCode);
         });
       pendingRequests.set(schemeCode, p);
     }
@@ -59,7 +76,7 @@ export function useFundData(schemeCode: string | null) {
       })
       .catch(err => {
         if (isMounted) {
-          setError(err.message);
+          setError(err?.message || `Failed to fetch data for ${schemeCode}`);
           setLoading(false);
         }
       });
