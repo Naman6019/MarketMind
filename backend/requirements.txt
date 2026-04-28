@@ -12,3 +12,8 @@ pydantic
 requests
 jugaad-data
 nsetools
+openpyxl
+lxml
+html5lib
+beautifulsoup4
+pypdf

@@ -574,6 +574,25 @@ async def trigger_eod_fetch(background_tasks: BackgroundTasks):
 
 async def get_mf_history_df(scheme_code: int, days: int = 1100):
     """Fetch MF history from Supabase and return as a DataFrame compatible with risk functions."""
+    async def fetch_remote_history() -> pd.DataFrame:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.get(f"https://api.mfapi.in/mf/{scheme_code}")
+                res.raise_for_status()
+                payload = res.json()
+            rows = payload.get("data") or []
+            if not rows:
+                return pd.DataFrame()
+            df = pd.DataFrame(rows)
+            df["date"] = pd.to_datetime(df["date"], format="%d-%m-%Y", errors="coerce")
+            df["Close"] = pd.to_numeric(df["nav"], errors="coerce")
+            df = df.dropna(subset=["date", "Close"]).sort_values("date")
+            df.set_index("date", inplace=True)
+            return df[["Close"]]
+        except Exception as e:
+            logger.warning(f"MFAPI history fallback failed for {scheme_code}: {e}")
+            return pd.DataFrame()
+
     if not supabase: return pd.DataFrame()
     try:
         # Default is ~3 years; callers can request more for 5Y UI metrics.
@@ -584,14 +603,28 @@ async def get_mf_history_df(scheme_code: int, days: int = 1100):
             df = df.sort_values('date')
             df.rename(columns={'nav': 'Close'}, inplace=True)
             df.set_index('date', inplace=True)
+            if len(df) < min(days, 500):
+                remote_df = await fetch_remote_history()
+                if not remote_df.empty:
+                    return remote_df.tail(days)
             return df
     except Exception as e:
         logger.error(f"Failed to fetch local MF history for {scheme_code}: {e}")
-    return pd.DataFrame()
+    return await fetch_remote_history()
 
 async def get_nifty_history_df(days: int = 1100):
     """Fetch NIFTY history from Supabase stock_history table."""
-    if not supabase: return pd.DataFrame()
+    def fetch_yfinance_nifty() -> pd.DataFrame:
+        try:
+            hist = yf.Ticker("^NSEI").history(period="5y")
+            if hist.empty:
+                return pd.DataFrame()
+            return hist[["Close"]].tail(days)
+        except Exception as e:
+            logger.warning(f"YFinance NIFTY fallback failed: {e}")
+            return pd.DataFrame()
+
+    if not supabase: return fetch_yfinance_nifty()
     try:
         res = supabase.table('stock_history').select('close, date').eq('symbol', 'NIFTY').order('date', desc=True).limit(days).execute()
         if res.data:
@@ -600,10 +633,14 @@ async def get_nifty_history_df(days: int = 1100):
             df = df.sort_values('date')
             df.rename(columns={'close': 'Close'}, inplace=True)
             df.set_index('date', inplace=True)
+            if len(df) < min(days, 500):
+                yf_df = fetch_yfinance_nifty()
+                if not yf_df.empty:
+                    return yf_df
             return df
     except Exception as e:
         logger.error(f"Failed to fetch local NIFTY history: {e}")
-    return pd.DataFrame()
+    return fetch_yfinance_nifty()
 
 def _normalize_fund_text(text: str) -> str:
     return " ".join(
@@ -707,6 +744,16 @@ async def get_mutual_fund_details(scheme_code: int):
             "5Y": _compute_cagr_from_close(close_series, 5)
         }
         risk_metrics = _compute_nav_risk_metrics(close_series)
+        nifty_hist = await get_nifty_history_df(days=2200)
+        if risk_metrics is None:
+            risk_metrics = {}
+        if not hist_df.empty and not nifty_hist.empty:
+            alpha_beta = calculate_alpha_beta_v2(hist_df, nifty_hist)
+            risk_metrics.update({
+                "beta": alpha_beta.get("beta"),
+                "alpha_vs_nifty": alpha_beta.get("alpha"),
+                "risk_period": f"{alpha_beta.get('period_years', 3)}Y"
+            })
 
         chart_df = hist_df.sort_index().tail(250) if not hist_df.empty else pd.DataFrame()
         chart_data = []

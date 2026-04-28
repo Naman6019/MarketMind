@@ -1,0 +1,26 @@
+{
+  "ter": [
+    {
+      "name": "AMFI TER selector",
+      "url": "https://www.amfiindia.com/ter-of-mf-schemes",
+      "type": "html",
+      "crawl_links": true
+    }
+  ],
+  "aum": [
+    {
+      "name": "AMFI AUM disclosure selector",
+      "url": "https://www.amfiindia.com/aum-data/average-aum",
+      "type": "html",
+      "crawl_links": true
+    }
+  ],
+  "holdings": [
+    {
+      "name": "AMFI scheme-wise disclosure selector",
+      "url": "https://www.amfiindia.com/otherdata/scheme-wise-disclosure",
+      "type": "html",
+      "crawl_links": true
+    }
+  ]
+}

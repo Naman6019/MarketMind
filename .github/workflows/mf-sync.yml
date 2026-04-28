@@ -19,10 +19,23 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests supabase python-dotenv
+        run: pip install requests supabase python-dotenv pandas openpyxl lxml html5lib beautifulsoup4 pypdf
 
       - name: Run AMFI MF Sync
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python backend/scripts/sync_mf.py
+
+      - name: Backfill MF NAV History
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          MF_HISTORY_SCHEME_LIMIT: "200"
+        run: python backend/scripts/sync_mf_history.py
+
+      - name: Sync MF Metadata
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python backend/scripts/sync_mf_metadata.py

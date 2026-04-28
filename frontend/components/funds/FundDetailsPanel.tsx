@@ -101,6 +101,13 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
           }
        }
     }
+
+    if (beta === null && typeof apiRiskMetrics?.beta === 'number') {
+      beta = apiRiskMetrics.beta;
+    }
+    if (alpha === null && typeof apiRiskMetrics?.alpha_vs_nifty === 'number') {
+      alpha = apiRiskMetrics.alpha_vs_nifty;
+    }
     
     // --- FALLBACK TO LOCAL CALCULATION ---
     if ((beta === null || alpha === null) && benchmark.data && navData.length > 20) {
@@ -211,9 +218,9 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
           <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex flex-col gap-1">
               <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total AUM</div>
               <div className="text-xl font-bold text-[var(--accent-color)] tracking-tighter">
-                  {metrics.precomputedAum && metrics.precomputedAum !== 'N/A' ? `₹${metrics.precomputedAum} Cr` : (details?.aum || extraMeta?.aum ? `₹${details?.aum || extraMeta.aum} Cr` : 'TBD')}
+                  {metrics.precomputedAum && metrics.precomputedAum !== 'N/A' ? `₹${metrics.precomputedAum} Cr` : (details?.aum || extraMeta?.aum ? `₹${details?.aum || extraMeta.aum} Cr` : 'Unavailable')}
               </div>
-              <div className="text-[10px] text-gray-600 font-medium leading-none">Syncing monthly...</div>
+              <div className="text-[10px] text-gray-600 font-medium leading-none">Not in AMFI NAV feed</div>
           </div>
       </div>
 
@@ -224,7 +231,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
                 <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Expense Ratio</div>
               </div>
               <div className="text-lg font-bold text-white tracking-tighter">
-                  {metrics.precomputedExpenseRatio && metrics.precomputedExpenseRatio !== 'N/A' ? `${metrics.precomputedExpenseRatio}%` : (details?.expense_ratio || extraMeta?.expense_ratio ? `${details?.expense_ratio || extraMeta.expense_ratio}%` : '—')}
+                  {metrics.precomputedExpenseRatio && metrics.precomputedExpenseRatio !== 'N/A' ? `${metrics.precomputedExpenseRatio}%` : (details?.expense_ratio || extraMeta?.expense_ratio ? `${details?.expense_ratio || extraMeta.expense_ratio}%` : 'Unavailable')}
               </div>
           </div>
       </div>
