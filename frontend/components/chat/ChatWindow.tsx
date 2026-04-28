@@ -6,6 +6,8 @@ import remarkGfm from 'remark-gfm';
 import { Send } from 'lucide-react';
 import { useCanvasStore } from '@/store/useCanvasStore';
 
+type AssetType = 'auto' | 'stock' | 'mutual_fund';
+
 type Message = {
   id: string;
   role: 'user' | 'system';
@@ -22,6 +24,7 @@ export default function ChatWindow() {
   ]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [assetType, setAssetType] = useState<AssetType>('auto');
   const { setView, setIds, openCanvas } = useCanvasStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -59,7 +62,7 @@ export default function ChatWindow() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: text }),
+        body: JSON.stringify({ query: text, asset_type: assetType }),
       });
 
       if (!res.ok) throw new Error('API Error');
@@ -120,6 +123,23 @@ export default function ChatWindow() {
             Pipeline thinking...
           </div>
         )}
+        <div className="asset-toggle" aria-label="Asset type">
+          {[
+            { label: 'Auto', value: 'auto' },
+            { label: 'Stocks', value: 'stock' },
+            { label: 'Mutual Funds', value: 'mutual_fund' },
+          ].map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={assetType === option.value ? 'active' : ''}
+              onClick={() => setAssetType(option.value as AssetType)}
+              disabled={isProcessing}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <div className="input-wrapper">
           <textarea
             ref={textareaRef}
@@ -131,7 +151,7 @@ export default function ChatWindow() {
                 handleSend();
               }
             }}
-            placeholder="Ask about stocks, indices, or market news..."
+            placeholder={assetType === 'mutual_fund' ? 'Ask about mutual funds...' : assetType === 'stock' ? 'Ask about stocks, indices, or market news...' : 'Ask about stocks, mutual funds, indices, or market news...'}
             rows={1}
           />
           <button className="send-button" onClick={handleSend} aria-label="Send Message" disabled={isProcessing}>

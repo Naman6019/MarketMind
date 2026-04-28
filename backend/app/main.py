@@ -5,7 +5,7 @@ import asyncio
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Literal
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,6 +57,7 @@ def health():
 
 class ChatRequest(BaseModel):
     query: str
+    asset_type: Literal["auto", "stock", "mutual_fund"] = "auto"
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -98,8 +99,21 @@ async def function_ollama_chat(messages, format="json", max_retries=2):
             logger.error(f"Groq API Error: {e}")
             return None
 
-async def route_query(query: str) -> dict:
+async def route_query(query: str, asset_type: str = "auto") -> dict:
     """Agent 1: Router"""
+    asset_instruction = ""
+    if asset_type == "mutual_fund":
+        asset_instruction = """
+The user explicitly selected Mutual Funds mode. Treat ambiguous names as mutual fund scheme names, not stocks.
+Preserve category words from the user query like Small Cap, Flexi Cap, Mid Cap, Large Cap, Index, Direct, Growth in compare_entities.
+Do not classify mutual fund requests as stock screeners.
+"""
+    elif asset_type == "stock":
+        asset_instruction = """
+The user explicitly selected Stocks mode. Treat ambiguous names as stocks or indices, not mutual fund schemes.
+Do not classify stock requests as mutual fund requests.
+"""
+
     system_prompt = """You are the Router Agent for MarketMind. Classify the user query intent.
 If the query asks to filter, list, or screen stocks (e.g., "Find stocks with PE < 20", "Show me oversold stocks", "Mid cap stocks with RSI < 30"), set intent to 'screener' and populate 'screener_filters'.
 If the query asks to compare two or more mutual funds or stocks, set intent to 'compare' and populate 'compare_entities' with a list of their names (e.g. ["HDFC Flexi Cap", "Parag Parikh Flexi Cap"]).
@@ -123,7 +137,7 @@ Output strict JSON only format:
   "compare_entities": ["Asset 1 Name", "Asset 2 Name"]
 }
 If a filter is not mentioned, exclude it from screener_filters. Default historical_period to "1mo" if not mentioned. Default sentiment_flag to false unless news sentiment is requested.
-    """
+    """ + asset_instruction
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": query}
@@ -790,7 +804,8 @@ async def get_mutual_fund_details(scheme_code: int):
 
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
-    intent_info = await route_query(req.query)
+    asset_type = req.asset_type
+    intent_info = await route_query(req.query, asset_type)
     intent = intent_info.get("intent", "general")
     ticker = intent_info.get("ticker")
     period = intent_info.get("historical_period", "1mo")
@@ -799,6 +814,27 @@ async def chat_endpoint(req: ChatRequest):
     quant_data = {}
     news_data = []
     screener_results = None
+
+    def _entity_search_term(entity: str) -> str:
+        query_lower = req.query.lower()
+        entity_lower = entity.lower()
+        additions = []
+        for phrase in ["small cap", "mid cap", "large cap", "flexi cap", "multi cap", "index"]:
+            if phrase in query_lower and phrase not in entity_lower:
+                additions.append(phrase)
+        return " ".join([entity, *additions]).strip()
+
+    def _fund_search_pattern(search_term: str) -> str:
+        cleaned = (
+            search_term.lower()
+            .replace(' fund', '')
+            .replace(' growth', '')
+            .replace('.', ' ')
+            .replace(',', ' ')
+            .strip()
+        )
+        words = [word for word in cleaned.split() if word]
+        return f"%{'%'.join(words)}%" if words else "%"
     
     if intent == "screener":
         filters = intent_info.get("screener_filters", {})
@@ -819,13 +855,13 @@ async def chat_endpoint(req: ChatRequest):
             for entity in entities:
                 db_data = None
                 scheme_code = None
-                if supabase:
+                if supabase and asset_type != "stock":
                     try:
-                        words = entity.lower().replace(' fund', '').replace(' growth', '').strip().split()
-                        search_pattern = f"%{'%'.join(words)}%"
+                        search_term = _entity_search_term(entity)
+                        search_pattern = _fund_search_pattern(search_term)
                         res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(25).execute()
                         if res.data:
-                            best_match = _pick_best_fund_match(entity, res.data)
+                            best_match = _pick_best_fund_match(search_term, res.data)
                             scheme_code = best_match['scheme_code']
                             db_data = {
                                 "name": best_match['scheme_name'],
@@ -841,7 +877,7 @@ async def chat_endpoint(req: ChatRequest):
                         logger.error(f"Supabase compare error: {e}")
 
                 risk_metrics = {}
-                yf_ticker = await resolve_mf_ticker(entity)
+                yf_ticker = None if asset_type == "mutual_fund" else await resolve_mf_ticker(entity)
                 
                 try:
                     hist = pd.DataFrame()
@@ -876,7 +912,7 @@ async def chat_endpoint(req: ChatRequest):
                 if db_data:
                     db_data.update(risk_metrics)
                     comparison_results[entity] = db_data
-                elif yf_ticker:
+                elif yf_ticker and asset_type != "mutual_fund":
                     comparison_results[entity] = fetch_quant_data(yf_ticker, period)
                 else:
                     comparison_results[entity] = {"error": "Data not found for this entity"}
@@ -885,19 +921,18 @@ async def chat_endpoint(req: ChatRequest):
     
     # Handle single quant lookup (or forced single comparison)
     if intent in ["quant", "both"]:
-        # Try resolution
-        yf_ticker = await resolve_mf_ticker(ticker or req.query)
-        final_ticker = yf_ticker if yf_ticker else ticker
-        
-        # Primary: YFinance/Local Snapshot
-        quant_data = fetch_quant_data(final_ticker, period)
+        quant_data = {}
+
+        if asset_type != "mutual_fund":
+            yf_ticker = await resolve_mf_ticker(ticker or req.query)
+            final_ticker = yf_ticker if yf_ticker else ticker
+            quant_data = fetch_quant_data(final_ticker, period)
         
         # Fallback to Supabase
-        if (not quant_data or "error" in quant_data) and supabase:
+        if (not quant_data or "error" in quant_data) and supabase and asset_type != "stock":
             try:
                 search_term = ticker or req.query
-                words = search_term.lower().replace(' fund', '').replace(' growth', '').strip().split()
-                search_pattern = f"%{'%'.join(words)}%"
+                search_pattern = _fund_search_pattern(search_term)
                 res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(25).execute()
                 if res.data:
                     fund = _pick_best_fund_match(search_term, res.data)
@@ -951,23 +986,25 @@ async def chat_endpoint(req: ChatRequest):
             for entity in entities:
                 ent_lower = entity.lower()
                 resolved = False
-                for key, code in fallback_map.items():
-                    if key in ent_lower:
-                        resolved_ids.append(code); resolved = True; break
+                if asset_type != "stock":
+                    for key, code in fallback_map.items():
+                        if key in ent_lower:
+                            resolved_ids.append(code); resolved = True; break
                 if resolved: continue
-                if " " not in entity or ".ns" in ent_lower or ".bo" in ent_lower:
-                    ticker_clean = entity.split()[0].upper()
-                    resolved_ids.append(ticker_clean); resolved = True
-                if resolved: continue
-                if supabase:
+                if supabase and asset_type != "stock":
                     try:
-                        words = entity.lower().replace(' fund', '').replace(' growth', '').strip().split()
-                        search_pattern = f"%{'%'.join(words)}%"
+                        search_term = _entity_search_term(entity)
+                        search_pattern = _fund_search_pattern(search_term)
                         res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', search_pattern).limit(25).execute()
                         if res.data and len(res.data) > 0:
-                            best_match = _pick_best_fund_match(entity, res.data)
+                            best_match = _pick_best_fund_match(search_term, res.data)
                             resolved_ids.append(str(best_match['scheme_code']))
+                            resolved = True
                     except: pass
+                if resolved: continue
+                if asset_type != "mutual_fund" and (" " not in entity or ".ns" in ent_lower or ".bo" in ent_lower):
+                    ticker_clean = entity.split()[0].upper()
+                    resolved_ids.append(ticker_clean); resolved = True
             
             if len(resolved_ids) >= 2:
                 response_json["system_action"] = {"type": "COMPARE", "ids": resolved_ids[:2]}
