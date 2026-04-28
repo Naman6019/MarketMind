@@ -45,7 +45,7 @@ function MetricCard({ label, value, tooltip, icon: Icon, subValue }: { label: st
 }
 
 function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: string }) {
-  const { navData, meta } = useFundData(schemeCode);
+  const { navData, meta, details, returns: apiReturns, riskMetrics: apiRiskMetrics } = useFundData(schemeCode);
   const benchmark = useBenchmarkData();
   const [extraMeta, setExtraMeta] = useState<any>(null);
   const { auxiliaryData } = useCanvasStore();
@@ -64,9 +64,9 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
     if (!navData) return null;
     
     const returns = computeReturns(navData);
-    const cagr1Y = computeCAGR(navData, 1);
-    const cagr3Y = computeCAGR(navData, 3);
-    const cagr5Y = computeCAGR(navData, 5);
+    const cagr1Y = apiReturns?.['1Y'] ?? computeCAGR(navData, 1);
+    const cagr3Y = apiReturns?.['3Y'] ?? computeCAGR(navData, 3);
+    const cagr5Y = apiReturns?.['5Y'] ?? computeCAGR(navData, 5);
     const dailyReturns = toReturnsArray(navData);
     
     let beta: number | null = null;
@@ -153,12 +153,14 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
       }
     }
 
+    const apiStdDev = typeof apiRiskMetrics?.stdDev === 'number' ? apiRiskMetrics.stdDev * 100 : null;
+
     return {
       returns, cagr1Y, cagr3Y, cagr5Y, beta, alpha, precomputedAum, precomputedExpenseRatio,
-      sharpe: computeSharpe(dailyReturns),
-      stdDev: computeStdDev(dailyReturns)
+      sharpe: typeof apiRiskMetrics?.sharpeRatio === 'number' ? apiRiskMetrics.sharpeRatio : computeSharpe(dailyReturns),
+      stdDev: apiStdDev ?? computeStdDev(dailyReturns)
     };
-  }, [navData, benchmark.data, auxiliaryData, meta]);
+  }, [navData, benchmark.data, auxiliaryData, meta, apiReturns, apiRiskMetrics]);
 
   if (!navData || !meta || !metrics) {
     return (
@@ -209,7 +211,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
           <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex flex-col gap-1">
               <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total AUM</div>
               <div className="text-xl font-bold text-[var(--accent-color)] tracking-tighter">
-                  {metrics.precomputedAum && metrics.precomputedAum !== 'N/A' ? `₹${metrics.precomputedAum} Cr` : (extraMeta?.aum ? `₹${extraMeta.aum} Cr` : 'TBD')}
+                  {metrics.precomputedAum && metrics.precomputedAum !== 'N/A' ? `₹${metrics.precomputedAum} Cr` : (details?.aum || extraMeta?.aum ? `₹${details?.aum || extraMeta.aum} Cr` : 'TBD')}
               </div>
               <div className="text-[10px] text-gray-600 font-medium leading-none">Syncing monthly...</div>
           </div>
@@ -222,7 +224,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
                 <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Expense Ratio</div>
               </div>
               <div className="text-lg font-bold text-white tracking-tighter">
-                  {metrics.precomputedExpenseRatio && metrics.precomputedExpenseRatio !== 'N/A' ? `${metrics.precomputedExpenseRatio}%` : (extraMeta?.expense_ratio ? `${extraMeta.expense_ratio}%` : '—')}
+                  {metrics.precomputedExpenseRatio && metrics.precomputedExpenseRatio !== 'N/A' ? `${metrics.precomputedExpenseRatio}%` : (details?.expense_ratio || extraMeta?.expense_ratio ? `${details?.expense_ratio || extraMeta.expense_ratio}%` : '—')}
               </div>
           </div>
       </div>

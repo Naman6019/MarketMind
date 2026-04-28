@@ -576,7 +576,7 @@ async def get_mf_history_df(scheme_code: int, days: int = 1100):
     """Fetch MF history from Supabase and return as a DataFrame compatible with risk functions."""
     if not supabase: return pd.DataFrame()
     try:
-        # Fetch up to 3 years of data (approx 1100 days)
+        # Default is ~3 years; callers can request more for 5Y UI metrics.
         res = supabase.table('mutual_fund_history').select('nav, nav_date').eq('scheme_code', scheme_code).order('nav_date', desc=True).limit(days).execute()
         if res.data:
             df = pd.DataFrame(res.data)
@@ -604,6 +604,43 @@ async def get_nifty_history_df(days: int = 1100):
     except Exception as e:
         logger.error(f"Failed to fetch local NIFTY history: {e}")
     return pd.DataFrame()
+
+def _normalize_fund_text(text: str) -> str:
+    return " ".join(
+        text.lower()
+        .replace("smallcap", "small cap")
+        .replace("midcap", "mid cap")
+        .replace("largecap", "large cap")
+        .replace("-", " ")
+        .split()
+    )
+
+def _pick_best_fund_match(entity: str, rows: list[dict]) -> dict | None:
+    if not rows:
+        return None
+
+    entity_norm = _normalize_fund_text(entity.replace(" fund", "").replace(" growth", ""))
+    entity_words = [w for w in entity_norm.split() if len(w) > 2]
+
+    def score(row: dict) -> int:
+        name_norm = _normalize_fund_text(row.get("scheme_name", ""))
+        value = 0
+        if entity_norm and entity_norm in name_norm:
+            value += 100
+        value += sum(10 for word in entity_words if word in name_norm)
+        if "direct" in name_norm and "growth" in name_norm:
+            value += 20
+        if "regular" in name_norm:
+            value -= 15
+        if "idcw" in name_norm or "dividend" in name_norm:
+            value -= 20
+        if "index" in name_norm and "index" not in entity_norm:
+            value -= 35
+        if "etf" in name_norm and "etf" not in entity_norm:
+            value -= 35
+        return value
+
+    return max(rows, key=score)
 
 def _compute_cagr_from_close(close_series: pd.Series, years: int) -> float | None:
     if close_series.empty:
@@ -661,7 +698,7 @@ async def get_mutual_fund_details(scheme_code: int):
             raise HTTPException(status_code=404, detail="Mutual fund not found")
 
         details = fund_res.data[0]
-        hist_df = await get_mf_history_df(scheme_code)
+        hist_df = await get_mf_history_df(scheme_code, days=2200)
         close_series = hist_df["Close"] if not hist_df.empty else pd.Series(dtype=float)
 
         returns = {
@@ -681,12 +718,22 @@ async def get_mutual_fund_details(scheme_code: int):
                 }
                 for idx, val in chart_df["Close"].items()
             ]
+        full_data = []
+        if not hist_df.empty:
+            full_data = [
+                {
+                    "date": idx.strftime("%d-%m-%Y"),
+                    "value": round(float(val), 4)
+                }
+                for idx, val in hist_df.sort_index(ascending=False)["Close"].items()
+            ]
 
         return {
             "details": details,
             "returns": returns,
             "riskMetrics": risk_metrics,
-            "chartData": chart_data
+            "chartData": chart_data,
+            "fullData": full_data
         }
     except HTTPException:
         raise
@@ -729,13 +776,9 @@ async def chat_endpoint(req: ChatRequest):
                     try:
                         words = entity.lower().replace(' fund', '').replace(' growth', '').strip().split()
                         search_pattern = f"%{'%'.join(words)}%"
-                        res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(10).execute()
+                        res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(25).execute()
                         if res.data:
-                            best_match = res.data[0]
-                            for row in res.data:
-                                name = row['scheme_name'].lower()
-                                if 'direct' in name and 'growth' in name:
-                                    best_match = row; break
+                            best_match = _pick_best_fund_match(entity, res.data)
                             scheme_code = best_match['scheme_code']
                             db_data = {
                                 "name": best_match['scheme_name'],
@@ -808,9 +851,9 @@ async def chat_endpoint(req: ChatRequest):
                 search_term = ticker or req.query
                 words = search_term.lower().replace(' fund', '').replace(' growth', '').strip().split()
                 search_pattern = f"%{'%'.join(words)}%"
-                res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(1).execute()
+                res = supabase.table('mutual_funds').select('*').ilike('scheme_name', search_pattern).limit(25).execute()
                 if res.data:
-                    fund = res.data[0]
+                    fund = _pick_best_fund_match(search_term, res.data)
                     scheme_code = fund['scheme_code']
                     quant_data = {
                         "name": fund['scheme_name'],
@@ -873,13 +916,9 @@ async def chat_endpoint(req: ChatRequest):
                     try:
                         words = entity.lower().replace(' fund', '').replace(' growth', '').strip().split()
                         search_pattern = f"%{'%'.join(words)}%"
-                        res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', search_pattern).execute()
+                        res = supabase.table('mutual_funds').select('scheme_code', 'scheme_name').ilike('scheme_name', search_pattern).limit(25).execute()
                         if res.data and len(res.data) > 0:
-                            best_match = res.data[0]
-                            for row in res.data:
-                                name = row['scheme_name'].lower()
-                                if 'direct' in name and 'growth' in name:
-                                    best_match = row; break
+                            best_match = _pick_best_fund_match(entity, res.data)
                             resolved_ids.append(str(best_match['scheme_code']))
                     except: pass
             

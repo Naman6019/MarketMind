@@ -70,6 +70,10 @@ export async function GET(_request: Request, context: { params: Promise<{ scheme
       date: h.date,
       value: parseFloat(h.nav)
     }));
+    const fullData = history.map(h => ({
+      date: h.date,
+      value: parseFloat(h.nav)
+    }));
 
     // --- FALLBACK FOR AUM/EXPENSE RATIO ---
     // If they are null in Supabase, we could theoretically fetch them from yfinance here.
@@ -84,7 +88,8 @@ export async function GET(_request: Request, context: { params: Promise<{ scheme
         '5Y': cagr5Y
       },
       riskMetrics,
-      chartData: recentHistory
+      chartData: recentHistory,
+      fullData
     });
 
   } catch (error) {

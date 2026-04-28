@@ -13,6 +13,9 @@ export interface FundDataResponse {
   meta: FundMeta;
   data: NavPoint[];
   status: string;
+  details?: any;
+  returns?: Record<string, number | null>;
+  riskMetrics?: any;
 }
 
 export interface FundMetrics {

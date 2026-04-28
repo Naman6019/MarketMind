@@ -28,13 +28,12 @@ export function useFundData(schemeCode: string | null) {
         .then(async res => {
           if (!res.ok) {
             const body = await res.text();
+            let message = body || `Failed to fetch data for ${schemeCode}`;
             try {
               const parsed = JSON.parse(body);
-              const message = parsed?.detail || parsed?.error || `Failed to fetch data for ${schemeCode}`;
-              throw new Error(message);
-            } catch {
-              throw new Error(body || `Failed to fetch data for ${schemeCode}`);
-            }
+              message = parsed?.detail || parsed?.error || message;
+            } catch {}
+            throw new Error(message);
           }
           return res.json();
         })
@@ -52,11 +51,14 @@ export function useFundData(schemeCode: string | null) {
               scheme_code: json.details.scheme_code,
               scheme_name: json.details.scheme_name
             },
-            data: json.chartData.map((d: any) => ({
+            data: (json.fullData || json.chartData).map((d: any) => ({
               date: d.date,
               nav: d.value.toString()
             })),
-            status: 'ok'
+            status: 'ok',
+            details: json.details,
+            returns: json.returns,
+            riskMetrics: json.riskMetrics
           };
           globalCache.set(schemeCode, formatted);
           return formatted;
@@ -89,6 +91,9 @@ export function useFundData(schemeCode: string | null) {
   return { 
     navData: data?.data || null, 
     meta: data?.meta || null, 
+    details: data?.details || null,
+    returns: data?.returns || null,
+    riskMetrics: data?.riskMetrics || null,
     loading, 
     error 
   };
