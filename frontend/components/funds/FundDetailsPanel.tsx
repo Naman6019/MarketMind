@@ -75,17 +75,25 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
     let precomputedExpenseRatio: string | null = null;
 
     // --- USE PRE-FETCHED DATA FROM CHAT IF AVAILABLE ---
-    if (auxiliaryData?.comparison) {
+    const comparisonData = auxiliaryData?.quant_data?.comparison ?? auxiliaryData?.comparison;
+
+    if (comparisonData) {
        // Look for this fund in comparison data
        // Names might match partially
        const fundName = meta?.scheme_name?.toLowerCase() || '';
-       for (const [key, val] of Object.entries(auxiliaryData.comparison)) {
+       for (const [key, val] of Object.entries(comparisonData)) {
           const keyLower = key.toLowerCase();
-          const words = keyLower.split(/\s+/).filter(w => w.length > 2);
-          const isFuzzyMatch = words.length > 0 && words.every(word => fundName.includes(word));
-          
-          if (isFuzzyMatch || fundName.includes(keyLower) || keyLower.includes(fundName)) {
-             const data = val as any;
+          const data = val as any;
+          const backendName = typeof data?.name === 'string' ? data.name.toLowerCase() : '';
+          const candidates = [keyLower, backendName].filter(Boolean);
+
+          const isMatch = candidates.some((candidate) => {
+            const words = candidate.split(/\s+/).filter(w => w.length > 2);
+            const isFuzzyMatch = words.length > 0 && words.every(word => fundName.includes(word));
+            return isFuzzyMatch || fundName.includes(candidate) || candidate.includes(fundName);
+          });
+
+          if (isMatch) {
              if (data.beta && data.beta !== 'N/A') beta = parseFloat(data.beta);
              if (data.alpha_vs_nifty && data.alpha_vs_nifty !== 'N/A') alpha = parseFloat(data.alpha_vs_nifty);
              if (data.aum && data.aum !== 'N/A') precomputedAum = data.aum.toString();

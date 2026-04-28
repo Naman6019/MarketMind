@@ -15,6 +15,7 @@ import feedparser
 from datetime import datetime, timedelta
 import pytz
 import numpy as np
+import pandas as pd
 
 # Redirect yfinance cache to the writable /tmp directory
 os.environ["YFINANCE_CACHE_DIR"] = "/tmp/yfinance_cache"
@@ -639,7 +640,11 @@ async def chat_endpoint(req: ChatRequest):
             news_data = news_items
             
     final_answer = await synthesis_response(req.query, intent_info, quant_data, news_data, screener_results)
-    response_json = {"answer": final_answer, "debug_intent": intent_info}
+    response_json = {
+        "answer": final_answer,
+        "debug_intent": intent_info,
+        "quant_data": quant_data
+    }
     
     if intent == "compare":
         entities = intent_info.get("compare_entities", [])
