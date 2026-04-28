@@ -87,9 +87,9 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
           const backendName = typeof data?.name === 'string' ? data.name.toLowerCase() : '';
           const candidates = [keyLower, backendName].filter(Boolean);
 
-          const isMatch = candidates.some((candidate) => {
-            const words = candidate.split(/\s+/).filter(w => w.length > 2);
-            const isFuzzyMatch = words.length > 0 && words.every(word => fundName.includes(word));
+          const isMatch = candidates.some((candidate: string) => {
+            const words = candidate.split(/\s+/).filter((w: string) => w.length > 2);
+            const isFuzzyMatch = words.length > 0 && words.every((word: string) => fundName.includes(word));
             return isFuzzyMatch || fundName.includes(candidate) || candidate.includes(fundName);
           });
 
