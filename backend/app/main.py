@@ -30,6 +30,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 from app.database import supabase
 from app.fetcher import run_eod_fetch
 from app.nse_client import fetch_live_quote
+from app.stock_universe import resolve_stock_symbol
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -892,6 +893,7 @@ async def chat_endpoint(req: ChatRequest):
 
                 risk_metrics = {}
                 yf_ticker = None if asset_type == "mutual_fund" else await resolve_mf_ticker(entity)
+                stock_symbol = None if asset_type == "mutual_fund" else resolve_stock_symbol(entity)
                 
                 try:
                     hist = pd.DataFrame()
@@ -926,8 +928,8 @@ async def chat_endpoint(req: ChatRequest):
                 if db_data:
                     db_data.update(risk_metrics)
                     comparison_results[entity] = db_data
-                elif yf_ticker and asset_type != "mutual_fund":
-                    comparison_results[entity] = fetch_quant_data(yf_ticker, period)
+                elif asset_type != "mutual_fund" and (stock_symbol or yf_ticker):
+                    comparison_results[entity] = fetch_quant_data(stock_symbol or yf_ticker, period)
                 else:
                     comparison_results[entity] = {"error": "Data not found for this entity"}
                     
@@ -938,8 +940,9 @@ async def chat_endpoint(req: ChatRequest):
         quant_data = {}
 
         if asset_type != "mutual_fund":
+            stock_symbol = resolve_stock_symbol(ticker or req.query)
             yf_ticker = await resolve_mf_ticker(ticker or req.query)
-            final_ticker = yf_ticker if yf_ticker else ticker
+            final_ticker = stock_symbol or yf_ticker or ticker
             quant_data = fetch_quant_data(final_ticker, period)
         
         # Fallback to Supabase
@@ -1016,8 +1019,9 @@ async def chat_endpoint(req: ChatRequest):
                             resolved = True
                     except: pass
                 if resolved: continue
-                if asset_type != "mutual_fund" and (" " not in entity or ".ns" in ent_lower or ".bo" in ent_lower):
-                    ticker_clean = entity.split()[0].upper()
+                if asset_type != "mutual_fund":
+                    stock_symbol = resolve_stock_symbol(entity)
+                    ticker_clean = stock_symbol or entity.split()[0].upper()
                     resolved_ids.append(ticker_clean); resolved = True
             
             if len(resolved_ids) >= 2:

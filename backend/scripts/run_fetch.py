@@ -17,42 +17,15 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 
 from app.nse_client import fetch_nse_bhavcopy
+from app.stock_universe import load_stock_universe
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-NIFTY_50_TICKERS = [
-    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "ITC", "SBIN", "BHARTIARTL",
-    "BAJFINANCE", "LT", "KOTAKBANK", "HCLTECH", "AXISBANK", "MARUTI", "SUNPHARMA",
-    "TITAN", "ULTRACEMCO", "BAJAJFINSV", "ASIANPAINT", "NTPC", "M&M", "TATASTEEL",
-    "POWERGRID", "INDUSINDBK", "TATAMOTORS", "HINDUNILVR", "NESTLEIND", "GRASIM",
-    "TECHM", "WIPRO", "HINDALCO", "JSWSTEEL", "ADANIENT", "ADANIPORTS", "ONGC",
-    "BRITANNIA", "CIPLA", "APOLLOHOSP", "DIVISLAB", "DRREDDY", "BAJAJ-AUTO",
-    "TATACONSUM", "EICHERMOT", "COALINDIA", "HEROMOTOCO", "UPL", "BPCL", "LTIM",
-    "SBILIFE"
-]
-
-MIDCAP_TICKERS = [
-    "MAXHEALTH", "YESBANK", "IDFCFIRSTB", "TATACOMM", "RVNL", "AUROPHARMA", "KPITTECH", 
-    "PERSISTENT", "CUMMINSIND", "VOLTAS", "CONCOR", "HINDPETRO", "MRF", "ASHOKLEY", 
-    "BALKRISIND", "DIXON", "POLYCAB", "LUPIN", "NMDC", "TRENT", "CANBK", "FEDERALBNK",
-    "IDBI", "OBEROIRLTY", "PEL", "SRF", "TATAELXSI", "UNIONBANK", "ZEEL", "BATAINDIA"
-]
-
-SMALLCAP_TICKERS = [
-    "SUZLON", "RITES", "IRFC", "MAZDOCK", "KEC", "MCX", "BSOFT", "CYIENT", "ANGELONE", 
-    "CDSL", "ZENSARTECH", "SONATSOFTW", "KEI", "RADICO", "HFCL", "NBCC", "BSE", 
-    "HUDCO", "JSL", "CASTROLIND", "CENTRALBK", "FSL", "IEX", "JWL", "PPLPHARMA", 
-    "RAILTEL", "SJVN", "SOUTHBANK", "TEJASNET", "WELCORP"
-]
-
-UNIVERSE_TICKERS = set(NIFTY_50_TICKERS + MIDCAP_TICKERS + SMALLCAP_TICKERS)
-TICKER_TO_CATEGORY = {t: "Large Cap" for t in NIFTY_50_TICKERS}
-TICKER_TO_CATEGORY.update({t: "Mid Cap" for t in MIDCAP_TICKERS})
-TICKER_TO_CATEGORY.update({t: "Small Cap" for t in SMALLCAP_TICKERS})
+STOCK_INFO_ENRICH_LIMIT = int(os.environ.get("STOCK_INFO_ENRICH_LIMIT", "120"))
+STOCK_YFINANCE_FALLBACK_LIMIT = int(os.environ.get("STOCK_YFINANCE_FALLBACK_LIMIT", "150"))
 
 def compute_rsi(data: pd.DataFrame, window=14):
     if len(data) < window:
@@ -132,8 +105,10 @@ def main():
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_KEY environment variables.")
 
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    stock_universe = load_stock_universe()
+    universe_tickers = list(stock_universe.keys())
     
-    logger.info(f"Starting EOD fetch for {len(UNIVERSE_TICKERS)} tickers...")
+    logger.info(f"Starting EOD fetch for {len(universe_tickers)} tickers...")
     
     # 1. Primary: NSE Bhavcopy
     today = date.today()
@@ -147,10 +122,11 @@ def main():
         nifty_hist = get_local_history("NIFTY", 100)
         
         success = 0
-        for ticker in UNIVERSE_TICKERS:
+        for index, ticker in enumerate(universe_tickers):
             if ticker in bhav_map:
                 b_row = bhav_map[ticker]
-                category = TICKER_TO_CATEGORY.get(ticker, "Unknown")
+                meta = stock_universe.get(ticker, {})
+                category = meta.get("category", "Unknown")
                 
                 # 1. Start with Bhavcopy data
                 data = {
@@ -167,17 +143,18 @@ def main():
                 }
 
                 # 2. Add real-time info (Fast call - no history fetch)
-                try:
-                    stock = yf.Ticker(f"{ticker}.NS")
-                    info = stock.info
-                    data["pe_ratio"] = info.get("trailingPE", info.get("forwardPE"))
-                    data["market_cap"] = info.get("marketCap")
-                    data["beta"] = info.get("beta")
-                    rec = info.get("recommendationKey")
-                    if rec and rec != "none":
-                        data["recommendation"] = str(rec).replace('_', ' ').title()
-                except:
-                    pass
+                if index < STOCK_INFO_ENRICH_LIMIT:
+                    try:
+                        stock = yf.Ticker(f"{ticker}.NS")
+                        info = stock.info
+                        data["pe_ratio"] = info.get("trailingPE", info.get("forwardPE"))
+                        data["market_cap"] = info.get("marketCap")
+                        data["beta"] = info.get("beta")
+                        rec = info.get("recommendationKey")
+                        if rec and rec != "none":
+                            data["recommendation"] = str(rec).replace('_', ' ').title()
+                    except:
+                        pass
 
                 # 3. Calculate local metrics from DB history
                 hist = get_local_history(ticker, 30) # Need ~15-20 days for RSI
@@ -211,7 +188,8 @@ def main():
                     logger.error(f"Supabase upsert failed for {ticker}: {e}")
                 
                 # Small delay to prevent YFinance info rate limit
-                time.sleep(0.5)
+                if index < STOCK_INFO_ENRICH_LIMIT:
+                    time.sleep(0.5)
         
         # BSE Bhavcopy integration: TODO for future
         # logger.info("BSE Bhavcopy integration planned for future.")
@@ -223,12 +201,6 @@ def main():
     else:
         logger.warning("NSE Bhavcopy returned empty. Falling back to YFinance...")
         
-        ticker_groups = [
-            (NIFTY_50_TICKERS, "Large Cap"),
-            (MIDCAP_TICKERS, "Mid Cap"),
-            (SMALLCAP_TICKERS, "Small Cap")
-        ]
-        
         logger.info("Pre-fetching NIFTY 50 baseline...")
         try:
             nifty_baseline = yf.Ticker("^NSEI").history(period="3mo")
@@ -236,26 +208,25 @@ def main():
             nifty_baseline = None
 
         success = 0
-        for tickers, category in ticker_groups:
-            logger.info(f"Processing {category} group ({len(tickers)} tickers)...")
-            for ticker in tickers:
-                data = fetch_single_ticker_yfinance(ticker, category, nifty_baseline)
-                try:
-                    supabase.table('nifty_stocks').upsert(data).execute()
-                    
-                    # Save to history table
-                    history_row = {
-                        "symbol": ticker,
-                        "date": date.today().strftime("%Y-%m-%d"),
-                        "close": data['current_price'],
-                        "volume": None
-                    }
-                    supabase.table('stock_history').upsert(history_row, on_conflict='symbol,date').execute()
-                    
-                    success += 1
-                except Exception as e:
-                    logger.error(f"Supabase upsert failed for {ticker}: {e}")
-                time.sleep(1.0)
+        for ticker in universe_tickers[:STOCK_YFINANCE_FALLBACK_LIMIT]:
+            category = stock_universe.get(ticker, {}).get("category", "Unknown")
+            data = fetch_single_ticker_yfinance(ticker, category, nifty_baseline)
+            try:
+                supabase.table('nifty_stocks').upsert(data).execute()
+                
+                # Save to history table
+                history_row = {
+                    "symbol": ticker,
+                    "date": date.today().strftime("%Y-%m-%d"),
+                    "close": data['current_price'],
+                    "volume": None
+                }
+                supabase.table('stock_history').upsert(history_row, on_conflict='symbol,date').execute()
+                
+                success += 1
+            except Exception as e:
+                logger.error(f"Supabase upsert failed for {ticker}: {e}")
+            time.sleep(1.0)
         
         logger.info(f"Finished YFinance fallback fetch. {success} stocks updated.")
 

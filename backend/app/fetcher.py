@@ -2,37 +2,14 @@ import pandas as pd
 import time
 import logging
 import math
+import os
 from app.database import supabase
 from app.nse_client import fetch_live_quote
+from app.stock_universe import load_stock_universe
 import yfinance as yf
 
 logger = logging.getLogger(__name__)
-
-# Ticker lists maintained for universe consistency
-NIFTY_50_TICKERS = [
-    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "ITC", "SBIN", "BHARTIARTL",
-    "BAJFINANCE", "LT", "KOTAKBANK", "HCLTECH", "AXISBANK", "MARUTI", "SUNPHARMA",
-    "TITAN", "ULTRACEMCO", "BAJAJFINSV", "ASIANPAINT", "NTPC", "M&M", "TATASTEEL",
-    "POWERGRID", "INDUSINDBK", "TATAMOTORS", "HINDUNILVR", "NESTLEIND", "GRASIM",
-    "TECHM", "WIPRO", "HINDALCO", "JSWSTEEL", "ADANIENT", "ADANIPORTS", "ONGC",
-    "BRITANNIA", "CIPLA", "APOLLOHOSP", "DIVISLAB", "DRREDDY", "BAJAJ-AUTO",
-    "TATACONSUM", "EICHERMOT", "COALINDIA", "HEROMOTOCO", "UPL", "BPCL", "LTIM",
-    "SBILIFE"
-]
-
-MIDCAP_TICKERS = [
-    "MAXHEALTH", "YESBANK", "IDFCFIRSTB", "TATACOMM", "RVNL", "AUROPHARMA", "KPITTECH", 
-    "PERSISTENT", "CUMMINSIND", "VOLTAS", "CONCOR", "HINDPETRO", "MRF", "ASHOKLEY", 
-    "BALKRISIND", "DIXON", "POLYCAB", "LUPIN", "NMDC", "TRENT", "CANBK", "FEDERALBNK",
-    "IDBI", "OBEROIRLTY", "PEL", "SRF", "TATAELXSI", "UNIONBANK", "ZEEL", "BATAINDIA"
-]
-
-SMALLCAP_TICKERS = [
-    "SUZLON", "RITES", "IRFC", "MAZDOCK", "KEC", "MCX", "BSOFT", "CYIENT", "ANGELONE", 
-    "CDSL", "ZENSARTECH", "SONATSOFTW", "KEI", "RADICO", "HFCL", "NBCC", "BSE", 
-    "HUDCO", "JSL", "CASTROLIND", "CENTRALBK", "FSL", "IEX", "JWL", "PPLPHARMA", 
-    "RAILTEL", "SJVN", "SOUTHBANK", "TEJASNET", "WELCORP"
-]
+STOCK_INFO_ENRICH_LIMIT = int(os.environ.get("STOCK_INFO_ENRICH_LIMIT", "120"))
 
 def get_mf_nav(scheme_code: int):
     """
@@ -65,7 +42,7 @@ def compute_rsi(data: pd.DataFrame, window=14):
     rsi = 100 - (100 / (1 + rs))
     return float(rsi.iloc[-1])
 
-def fetch_single_ticker(ticker: str, category: str, nifty_hist: pd.DataFrame = None):
+def fetch_single_ticker(ticker: str, category: str, nifty_hist: pd.DataFrame = None, enrich: bool = True):
     """
     Task 2: Replace live YFinance call with fetch_live_quote().
     Uses YFinance only for history-dependent metrics (RSI, Alpha).
@@ -83,6 +60,9 @@ def fetch_single_ticker(ticker: str, category: str, nifty_hist: pd.DataFrame = N
             data["current_price"] = quote['last_price']
             data["change_pct"] = quote['pchange']
             
+        if not enrich:
+            return data
+
         # 2. History-dependent metrics (Keep YFinance as fallback/supplement for now as requested)
         # However, Task 2 Step 4 says replace the "live/on-demand YFinance call".
         stock_symbol = f"{ticker}.NS"
@@ -131,25 +111,24 @@ def run_eod_fetch():
         return {"error": "Supabase not configured"}
         
     results = []
-    ticker_groups = [
-        (NIFTY_50_TICKERS, "Large Cap"),
-        (MIDCAP_TICKERS, "Mid Cap"),
-        (SMALLCAP_TICKERS, "Small Cap")
-    ]
+    stock_universe = load_stock_universe()
+    universe_tickers = list(stock_universe.keys())
     
     try:
         nifty_baseline = yf.Ticker("^NSEI").history(period="3mo")
     except:
         nifty_baseline = None
 
-    for tickers, category in ticker_groups:
-        for ticker in tickers:
-            data = fetch_single_ticker(ticker, category, nifty_baseline)
-            try:
-                supabase.table('nifty_stocks').upsert(data).execute()
-                results.append(data)
-            except Exception as e:
-                logger.error(f"Supabase upsert failed for {ticker}: {e}")
+    for index, ticker in enumerate(universe_tickers):
+        category = stock_universe.get(ticker, {}).get("category", "Unknown")
+        should_enrich = index < STOCK_INFO_ENRICH_LIMIT
+        data = fetch_single_ticker(ticker, category, nifty_baseline if should_enrich else None, enrich=should_enrich)
+        try:
+            supabase.table('nifty_stocks').upsert(data).execute()
+            results.append(data)
+        except Exception as e:
+            logger.error(f"Supabase upsert failed for {ticker}: {e}")
+        if index < STOCK_INFO_ENRICH_LIMIT:
             time.sleep(1.0)
         
     return {"status": "success", "count": len(results)}

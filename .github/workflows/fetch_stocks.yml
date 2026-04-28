@@ -26,4 +26,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          STOCK_UNIVERSE_INDEX: NIFTY500
+          STOCK_INFO_ENRICH_LIMIT: "120"
+          STOCK_YFINANCE_FALLBACK_LIMIT: "150"
         run: python backend/scripts/run_fetch.py
