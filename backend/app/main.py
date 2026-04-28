@@ -3,6 +3,7 @@ import json
 import logging
 import asyncio
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List
 from dotenv import load_dotenv
@@ -28,6 +29,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 from app.database import supabase
 from app.fetcher import run_eod_fetch
+from app.nse_client import fetch_live_quote
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,6 +62,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.1-8b-instant"
 IST = pytz.timezone('Asia/Kolkata')
+QUANT_CACHE: Dict[str, Any] = {}
+QUANT_CACHE_TTL_SECONDS = 120
 
 async def function_ollama_chat(messages, format="json", max_retries=2):
     groq_key = os.environ.get("GROQ_API_KEY")
@@ -222,26 +226,123 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
     if not ticker: return {"error": "No ticker identified"}
     
     clean_ticker = ticker.replace('.NS', '').replace('.BO', '').replace('^NSEI', 'NIFTY')
-    
-    if period in ["1d", "1mo"] and not is_market_open() and supabase:
+
+    cache_key = f"{clean_ticker}:{period}"
+    cached_entry = QUANT_CACHE.get(cache_key)
+    now_ts = time.time()
+    if cached_entry and (now_ts - cached_entry["ts"]) < QUANT_CACHE_TTL_SECONDS:
+        return cached_entry["data"]
+
+    def cache_and_return(data: dict) -> dict:
+        QUANT_CACHE[cache_key] = {"ts": time.time(), "data": data}
+        return data
+
+    def get_local_quant_snapshot(symbol: str) -> dict | None:
+        if not supabase:
+            return None
         try:
-            res = supabase.table('nifty_stocks').select('*').eq('symbol', clean_ticker).execute()
-            if res.data and len(res.data) > 0:
-                row = res.data[0]
-                return {
-                    "timestamp": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST") + " (Supabase EOD Snapshot)",
-                    "price": row.get("current_price", "N/A"),
-                    "change_pct": row.get("change_pct", "N/A"),
-                    "pe_ratio": row.get("pe_ratio", "N/A"),
-                    "market_cap": row.get("market_cap", "N/A"),
-                    "beta": row.get("beta", "N/A"),
-                    "alpha_vs_nifty": row.get("alpha_vs_nifty", "N/A"),
-                    "historical_period": "1d (EOD)",
-                    "rsi_14d": row.get("rsi", "N/A"),
-                    "tv_recommendation": row.get("recommendation", "N/A")
-                }
+            snapshot_row = None
+            snapshot_res = supabase.table('nifty_stocks').select('*').eq('symbol', symbol).limit(1).execute()
+            if snapshot_res.data:
+                snapshot_row = snapshot_res.data[0]
+
+            history_res = supabase.table('stock_history').select('close, date').eq('symbol', symbol).order('date', desc=True).limit(2).execute()
+            history_rows = history_res.data or []
+
+            if not snapshot_row and not history_rows:
+                return None
+
+            latest_close = history_rows[0]["close"] if history_rows else None
+            prev_close = history_rows[1]["close"] if len(history_rows) > 1 else None
+            price = snapshot_row.get("current_price") if snapshot_row else latest_close
+            if price in [None, "N/A"]:
+                price = latest_close
+
+            change_pct = snapshot_row.get("change_pct") if snapshot_row else None
+            if (change_pct in [None, "N/A"]) and latest_close is not None and prev_close not in [None, 0]:
+                change_pct = round(((latest_close - prev_close) / prev_close) * 100, 2)
+
+            data = {
+                "timestamp": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST") + " (Supabase Local Snapshot)",
+                "price": round(float(price), 2) if price not in [None, "N/A"] else "N/A",
+                "change_pct": change_pct if change_pct not in [None, "N/A"] else "N/A",
+                "pe_ratio": snapshot_row.get("pe_ratio", "N/A") if snapshot_row else "N/A",
+                "market_cap": snapshot_row.get("market_cap", "N/A") if snapshot_row else "N/A",
+                "beta": snapshot_row.get("beta", "N/A") if snapshot_row else "N/A",
+                "alpha_vs_nifty": snapshot_row.get("alpha_vs_nifty", "N/A") if snapshot_row else "N/A",
+                "historical_period": "1d (EOD local)",
+                "rsi_14d": snapshot_row.get("rsi", "N/A") if snapshot_row else "N/A",
+                "tv_recommendation": snapshot_row.get("recommendation", "N/A") if snapshot_row else "N/A"
+            }
+
+            if symbol == "NIFTY":
+                data["beta"] = 1.0
+                data["alpha_vs_nifty"] = 0.0
+
+            return data
         except Exception as e:
-            logger.warning(f"Supabase failover error: {e}")
+            logger.warning(f"Supabase local snapshot error for {symbol}: {e}")
+            return None
+
+    def get_live_nifty_snapshot() -> dict | None:
+        try:
+            nifty = yf.Ticker("^NSEI")
+            intraday = nifty.history(period="1d", interval="1m")
+            if intraday.empty:
+                return None
+
+            last_price = float(intraday["Close"].dropna().iloc[-1])
+            local_data = get_local_quant_snapshot("NIFTY") or {}
+            prev_close = local_data.get("price")
+            change_pct = local_data.get("change_pct", "N/A")
+
+            if prev_close not in [None, "N/A", 0]:
+                change_pct = round(((last_price - float(prev_close)) / float(prev_close)) * 100, 2)
+
+            return {
+                "timestamp": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST") + " (Live NIFTY)",
+                "price": round(last_price, 2),
+                "change_pct": change_pct,
+                "pe_ratio": "N/A",
+                "market_cap": "N/A",
+                "beta": 1.0,
+                "alpha_vs_nifty": 0.0,
+                "historical_period": "1d (live)",
+                "rsi_14d": "N/A",
+                "tv_recommendation": "N/A"
+            }
+        except Exception as e:
+            logger.warning(f"Live NIFTY snapshot failed: {e}")
+            return None
+
+    if is_market_open():
+        if clean_ticker == "NIFTY":
+            live_nifty = get_live_nifty_snapshot()
+            if live_nifty:
+                return cache_and_return(live_nifty)
+        else:
+            live_quote = fetch_live_quote(clean_ticker)
+            if live_quote:
+                local_data = get_local_quant_snapshot(clean_ticker) or {}
+                live_data = {
+                    "timestamp": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST") + f" ({live_quote.get('source', 'Live Quote')})",
+                    "price": round(float(live_quote["last_price"]), 2),
+                    "change_pct": round(float(live_quote["pchange"]), 2) if live_quote.get("pchange") is not None else "N/A",
+                    "pe_ratio": local_data.get("pe_ratio", "N/A"),
+                    "market_cap": local_data.get("market_cap", "N/A"),
+                    "beta": local_data.get("beta", "N/A"),
+                    "alpha_vs_nifty": local_data.get("alpha_vs_nifty", "N/A"),
+                    "historical_period": "1d (live)",
+                    "rsi_14d": local_data.get("rsi_14d", "N/A"),
+                    "tv_recommendation": local_data.get("tv_recommendation", "N/A")
+                }
+                return cache_and_return(live_data)
+
+    # Prefer local data for NIFTY off-market, and for off-market short-window queries.
+    if clean_ticker == "NIFTY" or (period in ["1d", "1mo"] and not is_market_open()):
+        local_data = get_local_quant_snapshot(clean_ticker)
+        if local_data:
+            return cache_and_return(local_data)
 
     try:
         if period not in ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]:
@@ -249,7 +350,11 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
             
         stock = yf.Ticker(ticker)
         nifty = yf.Ticker("^NSEI")
-        info = stock.info
+        try:
+            info = stock.info
+        except Exception as e:
+            logger.warning(f"YFinance info lookup failed for {ticker}: {e}")
+            info = {}
         
         hist = stock.history(period=period)
         # Use 3y for stable risk metrics calculation
@@ -258,6 +363,9 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
         nifty_hist = nifty.history(period=calc_period)
         
         if hist.empty:
+            local_data = get_local_quant_snapshot(clean_ticker)
+            if local_data:
+                return cache_and_return(local_data)
             return {"error": "No recent data found"}
             
         current_price = info.get('currentPrice', hist['Close'].iloc[-1])
@@ -280,9 +388,12 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
             "tv_recommendation": "N/A",
             "aum": info.get("totalAssets", "N/A")
         }
-        return data
+        return cache_and_return(data)
     except Exception as e:
         logger.error(f"Quant Error: {e}")
+        local_data = get_local_quant_snapshot(clean_ticker)
+        if local_data:
+            return cache_and_return(local_data)
         return {"error": str(e)}
 
 async def analyze_news_sentiment(news_items: list) -> list:
