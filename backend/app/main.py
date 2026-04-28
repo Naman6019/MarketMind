@@ -551,14 +551,20 @@ async def chat_endpoint(req: ChatRequest):
                         logger.error(f"Supabase compare error: {e}")
 
                 risk_metrics = {}
-                # Try YFinance first, then fallback to local DB history
                 yf_ticker = await resolve_mf_ticker(entity)
                 
                 try:
                     hist = pd.DataFrame()
                     nifty_hist = pd.DataFrame()
-                    
-                    if yf_ticker:
+
+                    # Prefer local MF history for compare mode. It is faster, more stable,
+                    # and avoids third-party ticker mismatches for Indian mutual funds.
+                    if scheme_code:
+                        hist = await get_mf_history_df(scheme_code)
+                        nifty_hist = n_hist_local
+
+                    # Only fall back to YFinance when local history is unavailable.
+                    if hist.empty and yf_ticker:
                         stock = yf.Ticker(yf_ticker)
                         hist = stock.history(period="3y")
                         nifty = yf.Ticker("^NSEI")
@@ -566,11 +572,6 @@ async def chat_endpoint(req: ChatRequest):
                         # Add AUM if missing
                         if db_data and (not db_data.get("aum") or db_data["aum"] == "N/A"):
                             db_data["aum"] = stock.info.get("totalAssets", "N/A")
-                    
-                    # If YFinance failed but we have a scheme_code, use local history
-                    if hist.empty and scheme_code:
-                        hist = await get_mf_history_df(scheme_code)
-                        nifty_hist = n_hist_local
                         
                     if not hist.empty and not nifty_hist.empty:
                         metrics = calculate_alpha_beta_v2(hist, nifty_hist)

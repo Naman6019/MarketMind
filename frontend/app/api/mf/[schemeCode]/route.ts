@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { fetchMFHistory, calculateCAGR, calculateRiskMetrics } from '@/lib/mf/returns';
+import { calculateCAGR, calculateRiskMetrics } from '@/lib/mf/returns';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, context: { params: Promise<{ schemeCode: string }>}) {
   const { schemeCode } = await context.params;
@@ -28,18 +30,6 @@ export async function GET(request: Request, context: { params: Promise<{ schemeC
       nav: h.nav.toString()
     }));
 
-    // 2. Fallback to mfapi.in if we have very little history (e.g. less than 10 days)
-    if (history.length < 10) {
-      try {
-        const externalHistory = await fetchMFHistory(schemeCode);
-        if (externalHistory && externalHistory.length > history.length) {
-          history = externalHistory;
-        }
-      } catch (e) {
-        console.error("External fallback failed:", e);
-      }
-    }
-    
     // Calculate returns
     const cagr1Y = calculateCAGR(history, 1);
     const cagr3Y = calculateCAGR(history, 3);
