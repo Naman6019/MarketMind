@@ -29,7 +29,7 @@ jobs:
             echo "ERROR: INDIAN_API_KEY secret is empty or not set!"
             exit 1
           else
-            echo "INDIANAPI_KEY is set (length: ${#INDIANAPI_KEY})"
+            echo "INDIANAPI_KEY is set (length=${#INDIANAPI_KEY})"
           fi
 
       - name: Run Job
@@ -43,4 +43,6 @@ jobs:
             echo "Error: Missing SUPABASE_URL or SUPABASE_KEY"
             exit 1
           fi
+          echo "STOCK_DATA_PROVIDER=$STOCK_DATA_PROVIDER"
+          echo "INDIANAPI_KEY set=$([ -n "$INDIANAPI_KEY" ] && echo yes || echo no)"
           python -m backend.app.jobs.sync_stock_universe
