@@ -23,7 +23,7 @@ jobs:
       - name: Run Jobs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           STOCK_DATA_PROVIDER: ${{ secrets.STOCK_DATA_PROVIDER }}
           INDIANAPI_KEY: ${{ secrets.INDIANAPI_KEY }}
         run: |
