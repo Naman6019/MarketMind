@@ -34,7 +34,13 @@ def main():
         symbols = [s.strip().upper() for s in args.symbols.split(",")]
     else:
         try:
-            res = repo.supabase.table("stocks").select("symbol").eq("is_active", True).execute()
+            res = (
+                repo.supabase.table("stocks")
+                .select("symbol")
+                .eq("is_active", True)
+                .eq("exchange", "NSE")
+                .execute()
+            )
             symbols = [row["symbol"] for row in res.data] if res.data else []
         except Exception as e:
             logger.error(f"Failed to fetch active stocks: {e}")
