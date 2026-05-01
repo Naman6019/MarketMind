@@ -23,15 +23,15 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#0b0c10] text-[#c5c6c7] font-sans selection:bg-[#66fcf1] selection:text-[#0b0c10]">
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-clip bg-[#0b0c10] text-[#c5c6c7] font-sans selection:bg-[#66fcf1] selection:text-[#0b0c10]">
       {/* Background Glows */}
-      <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
+      <div className="fixed inset-0 w-screen overflow-hidden -z-10 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[#45a29e] opacity-[0.15] blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#66fcf1] opacity-[0.1] blur-[120px]" />
       </div>
 
       {/* Navigation */}
-      <nav className="flex items-center justify-between px-6 py-6 max-w-7xl mx-auto">
+      <nav className="mx-auto flex w-full max-w-[1680px] items-center justify-between px-4 py-5 sm:px-6 lg:px-10 xl:px-12">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#66fcf1] to-[#45a29e] shadow-[0_0_20px_rgba(102,252,241,0.4)] flex items-center justify-center">
             <LineChart className="text-[#0b0c10] w-6 h-6" />
@@ -40,7 +40,7 @@ export default function LandingPage() {
         </div>
         <Link 
           href="/dashboard"
-          className="px-6 py-2.5 rounded-full bg-[rgba(31,40,51,0.8)] border border-[rgba(197,198,199,0.1)] text-white font-medium hover:bg-[#1f2833] hover:border-[#66fcf1] transition-all duration-300 flex items-center gap-2 group shadow-[0_4px_20px_rgba(0,0,0,0.3)] backdrop-blur-md"
+          className="flex items-center gap-2 rounded-full border border-[rgba(197,198,199,0.1)] bg-[rgba(31,40,51,0.8)] px-4 py-2.5 font-medium text-white shadow-[0_4px_20px_rgba(0,0,0,0.3)] backdrop-blur-md transition-all duration-300 hover:border-[#66fcf1] hover:bg-[#1f2833] sm:px-6"
         >
           Launch App
           <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -48,20 +48,20 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <main className="max-w-7xl mx-auto px-6 pt-20 pb-32">
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
+      <main className="mx-auto w-full max-w-[1680px] px-4 pt-16 pb-24 sm:px-6 lg:px-10 lg:pt-20 lg:pb-32 xl:px-12">
+        <div className="grid min-w-0 grid-cols-1 items-center gap-12 xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.1fr)] xl:gap-20">
           <motion.div 
             initial="hidden"
             animate="visible"
             variants={staggerContainer}
-            className="flex flex-col gap-8"
+            className="flex min-w-0 flex-col gap-8"
           >
             <motion.div variants={fadeIn} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[rgba(102,252,241,0.1)] border border-[rgba(102,252,241,0.2)] w-fit">
               <Zap className="w-4 h-4 text-[#66fcf1]" />
               <span className="text-sm font-medium text-[#66fcf1]">AI-Orchestrated Financial Research</span>
             </motion.div>
             
-            <motion.h1 variants={fadeIn} className="text-5xl lg:text-7xl font-bold text-white leading-tight">
+            <motion.h1 variants={fadeIn} className="max-w-[12ch] text-[clamp(3rem,5.6vw,6.75rem)] font-bold leading-[1.06] text-white">
               Smarter Markets.<br/>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#66fcf1] to-[#45a29e]">
                 Sharper Minds.
@@ -93,7 +93,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, scale: 0.9, rotateX: 10 }}
             animate={{ opacity: 1, scale: 1, rotateX: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="relative perspective-1000"
+            className="relative min-w-0 justify-self-center xl:justify-self-end"
           >
             <div className="absolute inset-0 bg-gradient-to-tr from-[#66fcf1]/20 to-transparent rounded-2xl blur-2xl transform -rotate-3" />
             <div className="relative rounded-2xl border border-[rgba(197,198,199,0.1)] bg-[#1f2833]/80 backdrop-blur-xl p-2 shadow-2xl overflow-hidden transform hover:scale-[1.02] transition-transform duration-500">
@@ -102,7 +102,7 @@ export default function LandingPage() {
                 alt="MarketMind Dashboard Preview" 
                 width={800} 
                 height={600} 
-                className="rounded-xl w-full h-auto border border-[rgba(255,255,255,0.05)]"
+                className="h-auto w-full max-w-[900px] rounded-xl border border-[rgba(255,255,255,0.05)]"
                 priority
               />
             </div>
@@ -111,14 +111,14 @@ export default function LandingPage() {
       </main>
 
       {/* Features Section */}
-      <section id="features" className="py-32 relative bg-[rgba(11,12,16,0.8)] border-y border-[rgba(197,198,199,0.05)]">
-        <div className="max-w-7xl mx-auto px-6">
+      <section id="features" className="relative overflow-hidden border-y border-[rgba(197,198,199,0.05)] bg-[rgba(11,12,16,0.8)] py-24 lg:py-32">
+        <div className="mx-auto w-full max-w-[1680px] px-4 sm:px-6 lg:px-10 xl:px-12">
           <div className="text-center mb-20">
             <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">Built for the Modern Investor</h2>
             <p className="text-[#8a9199] text-lg max-w-2xl mx-auto">Everything you need to analyze, compare, and understand the markets without the noise.</p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid gap-6 md:grid-cols-3 lg:gap-8">
             {[
               {
                 icon: <Cpu className="w-8 h-8 text-[#66fcf1]" />,

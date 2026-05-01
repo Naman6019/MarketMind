@@ -28,13 +28,13 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Stock price-history comparison charts render when `stock_prices_daily` or fallback history exists.
 - Next.js `/api/*` proxy pattern is the required frontend/backend boundary.
 - GitHub Actions handles scheduled fetch jobs, not Vercel cron.
-- Mobile dashboard layout now uses a single active workspace for chat or comparison, preventing the input and comparison canvas from being clipped on phones.
+- Mobile dashboard layout now uses a single active workspace for chat or comparison, with the chat header fixed at the top and input fixed at the bottom on phones.
 
 ## In Progress
 - Expanding stock coverage beyond the current Nifty-focused list.
 - Testing `NIFTY500` vs `NIFTYTOTALMARKET`.
 - Tuning `STOCK_INFO_ENRICH_LIMIT` and `STOCK_YFINANCE_FALLBACK_LIMIT`.
-- **Premium Landing Page (`/`) with Framer Motion animations and Dashboard moved to (`/dashboard`)** (UI layout fixes ongoing).
+- **Premium Landing Page (`/`) with Framer Motion animations and Dashboard moved to (`/dashboard`)**.
 
 ## Known Gaps
 - Paid fundamentals provider mappings are not implemented yet.
@@ -42,7 +42,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - YFinance rate limits often on Render.
 - Portfolio overlap is partial because AMFI holdings often returns `Nil`.
 - News uses Google News RSS and can be slow.
-- Landing page has an empty black space on the right side. This persists because the root background container isn't stretching fully to 100% viewport width on wide screens, likely due to a conflict between Windows scrollbar width calculations and Tailwind's w-full/overflow-x-hidden properties.
+- Landing page wide-screen overflow has been clipped and the hero/features shell now uses a wider responsive container.
 
 ## Stock Data Architecture
 - Source-neutral tables are defined in `backend/migrations/20260501_source_neutral_stock_data.sql`.

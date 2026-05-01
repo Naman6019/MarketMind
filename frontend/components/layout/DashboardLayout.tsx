@@ -87,7 +87,9 @@ export default function DashboardLayout() {
                 {renderCanvasContent()}
               </>
             ) : (
-              <ChatWindow />
+              <div className="chat-area relative h-full w-full">
+                <ChatWindow />
+              </div>
             )}
           </div>
         ) : (

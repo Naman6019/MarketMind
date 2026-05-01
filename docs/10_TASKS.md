@@ -8,7 +8,7 @@
 - [ ] Expanding stock coverage beyond the current Nifty-focused list.
 - [ ] Testing `NIFTY500` vs `NIFTYTOTALMARKET`.
 - [ ] Tuning `STOCK_INFO_ENRICH_LIMIT` and `STOCK_YFINANCE_FALLBACK_LIMIT`.
-- [ ] Building a premium Landing Page at `/` and moving app to `/dashboard` (UI layout fixes ongoing).
+- [ ] Building a premium Landing Page at `/` and moving app to `/dashboard`.
 
 ## Done
 - [x] AI chat with asset mode toggle: `Auto`, `Stocks`, `Mutual Funds`.
@@ -27,6 +27,8 @@
 - [x] Next.js `/api/*` proxy pattern enforced as frontend/backend boundary.
 - [x] GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 - [x] Fixed mobile dashboard clipping by using a single active chat/comparison workspace and compact comparison chart spacing.
+- [x] Fixed mobile chat positioning so the header stays visible and the input stays at the bottom.
+- [x] Fixed landing page wide-screen right-side void by clipping horizontal overflow and widening the responsive shell.
 
 ## Blocked
 - None currently.
@@ -35,4 +37,4 @@
 - YFinance rate limits often on Render deployments.
 - [ ] Portfolio overlap is partial because AMFI holdings API often returns `Nil`.
 - News uses Google News RSS and can be slow.
-- Landing page has an empty black space on the right side. This persists because the root background container isn't stretching fully to 100% viewport width on wide screens, likely due to a conflict between Windows scrollbar width calculations and Tailwind's w-full/overflow-x-hidden properties.
+- Landing page wide-screen overflow was fixed by clipping horizontal overflow and using a wider responsive shell.
