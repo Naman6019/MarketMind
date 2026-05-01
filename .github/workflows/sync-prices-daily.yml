@@ -25,7 +25,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           STOCK_DATA_PROVIDER: ${{ secrets.STOCK_DATA_PROVIDER }}
-          INDIANAPI_KEY: ${{ secrets.INDIANAPI_KEY }}
+          INDIANAPI_KEY: ${{ secrets.INDIAN_API_KEY }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
             echo "Error: Missing SUPABASE_URL or SUPABASE_KEY"
