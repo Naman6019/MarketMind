@@ -20,18 +20,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r backend/requirements.txt
 
-      - name: Debug env vars
-        env:
-          INDIANAPI_KEY: ${{ secrets.INDIAN_API_KEY }}
-        run: |
-          echo "STOCK_DATA_PROVIDER=indianapi (hardcoded)"
-          if [ -z "$INDIANAPI_KEY" ]; then
-            echo "ERROR: INDIAN_API_KEY secret is empty or not set!"
-            exit 1
-          else
-            echo "INDIANAPI_KEY is set (length=${#INDIANAPI_KEY})"
-          fi
-
       - name: Run Job
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -43,6 +31,4 @@ jobs:
             echo "Error: Missing SUPABASE_URL or SUPABASE_KEY"
             exit 1
           fi
-          echo "STOCK_DATA_PROVIDER=$STOCK_DATA_PROVIDER"
-          echo "INDIANAPI_KEY set=$([ -n "$INDIANAPI_KEY" ] && echo yes || echo no)"
           python -m backend.app.jobs.sync_stock_universe
