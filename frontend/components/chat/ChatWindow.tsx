@@ -41,7 +41,7 @@ export default function ChatWindow() {
     e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
   };
 
-  const useSuggestion = (text: string) => {
+  const applySuggestion = (text: string) => {
     setInput(text);
   };
 
@@ -80,7 +80,7 @@ export default function ChatWindow() {
         ...prev,
         { id: Date.now().toString(), role: 'system', content: data.answer },
       ]);
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         { id: Date.now().toString(), role: 'system', content: 'Error: Unable to reach MarketMind core. Make sure the server is running.' },
@@ -107,9 +107,9 @@ export default function ChatWindow() {
               )}
               {msg.id === '1' && (
                 <div className="suggestions">
-                  <button className="suggestion-btn" onClick={() => useSuggestion('How is Reliance Industries performing today?')}>Reliance Industries</button>
-                  <button className="suggestion-btn" onClick={() => useSuggestion('What are the latest updates on Tata Motors?')}>Tata Motors News</button>
-                  <button className="suggestion-btn" onClick={() => useSuggestion('Show me the NIFTY 50 trend and recent news.')}>NIFTY 50 Analysis</button>
+                  <button className="suggestion-btn" onClick={() => applySuggestion('How is Reliance Industries performing today?')}>Reliance Industries</button>
+                  <button className="suggestion-btn" onClick={() => applySuggestion('What are the latest updates on Tata Motors?')}>Tata Motors News</button>
+                  <button className="suggestion-btn" onClick={() => applySuggestion('Show me the NIFTY 50 trend and recent news.')}>NIFTY 50 Analysis</button>
                 </div>
               )}
             </div>

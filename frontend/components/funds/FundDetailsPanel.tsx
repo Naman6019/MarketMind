@@ -15,7 +15,7 @@ import {
   calculateAlpha
 } from '../../lib/quantUtils';
 import { useCanvasStore } from '@/store/useCanvasStore';
-import { Info, TrendingUp, ShieldAlert, PieChart, Activity, Wallet } from 'lucide-react';
+import { TrendingUp, ShieldAlert, PieChart, Activity, Wallet, type LucideIcon } from 'lucide-react';
 
 
 interface Props {
@@ -23,9 +23,22 @@ interface Props {
   schemeCodeB: string;
 }
 
-function MetricCard({ label, value, tooltip, icon: Icon, subValue }: { label: string, value: string | null, tooltip: string, icon?: any, subValue?: string }) {
+type FundExtraMeta = {
+  aum?: string | number | null;
+  expense_ratio?: string | number | null;
+};
+
+type ComparisonFundData = {
+  name?: string;
+  beta?: string | number | null;
+  alpha_vs_nifty?: string | number | null;
+  aum?: string | number | null;
+  expense_ratio?: string | number | null;
+};
+
+function MetricCard({ label, value, tooltip, icon: Icon, subValue }: { label: string, value: string | null, tooltip: string, icon?: LucideIcon, subValue?: string }) {
   return (
-    <div className="bg-white/5 hover:bg-white/10 transition-all duration-300 rounded-2xl p-5 border border-white/10 relative group cursor-help shadow-lg hover:border-[var(--accent-color)]/30">
+    <div className="bg-white/5 hover:bg-white/10 transition-all duration-300 rounded-xl p-4 border border-white/10 relative group cursor-help shadow-lg hover:border-[var(--accent-color)]/30 sm:rounded-2xl sm:p-5">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           {Icon && <Icon size={16} className="text-[var(--accent-color)]" />}
@@ -33,7 +46,7 @@ function MetricCard({ label, value, tooltip, icon: Icon, subValue }: { label: st
         </div>
       </div>
       <div className="flex flex-col gap-1">
-        <div className="text-2xl font-black text-white tracking-tight">{value ?? '—'}</div>
+        <div className="text-xl font-black text-white tracking-tight sm:text-2xl">{value ?? '—'}</div>
         {subValue && <div className="text-[10px] text-gray-500 font-medium">{subValue}</div>}
       </div>
       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 p-3 bg-[#111] text-xs leading-relaxed text-gray-300 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 pointer-events-none border border-white/10 backdrop-blur-md">
@@ -47,7 +60,7 @@ function MetricCard({ label, value, tooltip, icon: Icon, subValue }: { label: st
 function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: string }) {
   const { navData, meta, details, returns: apiReturns, riskMetrics: apiRiskMetrics } = useFundData(schemeCode);
   const benchmark = useBenchmarkData();
-  const [extraMeta, setExtraMeta] = useState<any>(null);
+  const [extraMeta, setExtraMeta] = useState<FundExtraMeta | null>(null);
   const { auxiliaryData } = useCanvasStore();
 
   useEffect(() => {
@@ -55,7 +68,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
     fetch(`/api/mf/${schemeCode}`)
       .then(res => res.json())
       .then(json => {
-        if (json.details) setExtraMeta(json.details);
+        if (json.details) setExtraMeta(json.details as FundExtraMeta);
       })
       .catch(err => console.error("Error fetching extra meta:", err));
   }, [schemeCode]);
@@ -83,7 +96,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
        const fundName = meta?.scheme_name?.toLowerCase() || '';
        for (const [key, val] of Object.entries(comparisonData)) {
           const keyLower = key.toLowerCase();
-          const data = val as any;
+          const data = val as ComparisonFundData;
           const backendName = typeof data?.name === 'string' ? data.name.toLowerCase() : '';
           const candidates = [keyLower, backendName].filter(Boolean);
 
@@ -94,8 +107,8 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
           });
 
           if (isMatch) {
-             if (data.beta && data.beta !== 'N/A') beta = parseFloat(data.beta);
-             if (data.alpha_vs_nifty && data.alpha_vs_nifty !== 'N/A') alpha = parseFloat(data.alpha_vs_nifty);
+             if (data.beta && data.beta !== 'N/A') beta = parseFloat(String(data.beta));
+             if (data.alpha_vs_nifty && data.alpha_vs_nifty !== 'N/A') alpha = parseFloat(String(data.alpha_vs_nifty));
              if (data.aum && data.aum !== 'N/A') precomputedAum = data.aum.toString();
              if (data.expense_ratio && data.expense_ratio !== 'N/A') precomputedExpenseRatio = data.expense_ratio.toString();
           }
@@ -183,6 +196,8 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
 
   const latestNav = parseFloat(navData[0].nav).toFixed(2);
   const navDate = navData[0].date;
+  const aum = details?.aum ?? extraMeta?.aum;
+  const expenseRatio = details?.expense_ratio ?? extraMeta?.expense_ratio;
 
   const returnRow = (label: string, val: number | null, isCAGR = false) => (
     <div className="flex justify-between items-center py-3.5 border-b border-white/5 text-sm group/row px-3 rounded-xl transition-all hover:bg-white/5">
@@ -195,7 +210,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
   );
 
   return (
-    <div className="flex-1 flex flex-col gap-10 p-8">
+    <div className="flex-1 flex flex-col gap-6 p-4 sm:gap-10 sm:p-8">
       <div className="flex flex-col gap-3">
         <h3 className="text-2xl font-black truncate group relative cursor-default leading-tight tracking-tight" style={{ color: colorHex }}>
           <span className="truncate block" title={meta.scheme_name}>{meta.scheme_name}</span>
@@ -209,34 +224,34 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-          <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex flex-col gap-1">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="bg-black/30 rounded-xl p-4 border border-white/5 shadow-2xl flex flex-col gap-1 sm:rounded-2xl sm:p-5">
               <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Latest NAV</div>
               <div className="text-xl font-bold text-white tracking-tighter">₹{latestNav}</div>
               <div className="text-[10px] text-gray-600 font-medium">As of {navDate}</div>
           </div>
-          <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex flex-col gap-1">
+          <div className="bg-black/30 rounded-xl p-4 border border-white/5 shadow-2xl flex flex-col gap-1 sm:rounded-2xl sm:p-5">
               <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total AUM</div>
               <div className="text-xl font-bold text-[var(--accent-color)] tracking-tighter">
-                  {metrics.precomputedAum && metrics.precomputedAum !== 'N/A' ? `₹${metrics.precomputedAum} Cr` : (details?.aum || extraMeta?.aum ? `₹${details?.aum || extraMeta.aum} Cr` : 'Unavailable')}
+                  {metrics.precomputedAum && metrics.precomputedAum !== 'N/A' ? `₹${metrics.precomputedAum} Cr` : (aum ? `₹${aum} Cr` : 'Unavailable')}
               </div>
               <div className="text-[10px] text-gray-600 font-medium leading-none">Not in AMFI NAV feed</div>
           </div>
       </div>
 
       <div className="grid grid-cols-1">
-          <div className="bg-black/30 rounded-2xl p-5 border border-white/5 shadow-2xl flex items-center justify-between">
+          <div className="bg-black/30 rounded-xl p-4 border border-white/5 shadow-2xl flex items-center justify-between sm:rounded-2xl sm:p-5">
               <div className="flex items-center gap-3">
                 <Wallet size={16} className="text-gray-400" />
                 <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Expense Ratio</div>
               </div>
               <div className="text-lg font-bold text-white tracking-tighter">
-                  {metrics.precomputedExpenseRatio && metrics.precomputedExpenseRatio !== 'N/A' ? `${metrics.precomputedExpenseRatio}%` : (details?.expense_ratio || extraMeta?.expense_ratio ? `${details?.expense_ratio || extraMeta.expense_ratio}%` : 'Unavailable')}
+                  {metrics.precomputedExpenseRatio && metrics.precomputedExpenseRatio !== 'N/A' ? `${metrics.precomputedExpenseRatio}%` : (expenseRatio ? `${expenseRatio}%` : 'Unavailable')}
               </div>
           </div>
       </div>
 
-      <div className="bg-black/20 rounded-3xl p-7 border border-white/10 shadow-2xl">
+      <div className="bg-black/20 rounded-2xl p-4 border border-white/10 shadow-2xl sm:rounded-3xl sm:p-7">
         <div className="flex items-center gap-3 mb-6">
           <TrendingUp size={18} className="text-green-400" />
           <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Absolute Performance</h4>
@@ -250,12 +265,12 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
         </div>
       </div>
 
-      <div className="bg-black/20 rounded-3xl p-7 border border-white/10 shadow-2xl">
+      <div className="bg-black/20 rounded-2xl p-4 border border-white/10 shadow-2xl sm:rounded-3xl sm:p-7">
         <div className="flex items-center gap-3 mb-6">
           <ShieldAlert size={18} className="text-red-400" />
           <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Risk Quant</h4>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <MetricCard 
             label="Alpha" 
             value={metrics.alpha !== null ? (metrics.alpha > 0 ? '+' : '') + metrics.alpha.toFixed(2) + '%' : null} 
@@ -287,7 +302,7 @@ function FundColumn({ schemeCode, colorHex }: { schemeCode: string, colorHex: st
         </div>
       </div>
 
-      <div className="bg-black/40 rounded-3xl p-8 border border-white/5 border-dashed text-center">
+      <div className="bg-black/40 rounded-2xl p-5 border border-white/5 border-dashed text-center sm:rounded-3xl sm:p-8">
           <PieChart size={24} className="text-gray-700 mx-auto mb-4" />
           <div className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-2">Portfolio Under Sync</div>
           <p className="text-[10px] text-gray-600 leading-relaxed max-w-[200px] mx-auto">

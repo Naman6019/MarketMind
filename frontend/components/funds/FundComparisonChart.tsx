@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area } from 'recharts';
+import { useMemo } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, type TooltipContentProps, type TooltipValueType } from 'recharts';
 import { useFundData } from '../../hooks/useFundData';
 import { filterByPeriod, normalizeTo100, downsample } from '../../lib/fundDataUtils';
+import type { NavPoint } from '../../types/funds';
 
 export type Period = '1D' | '6M' | '1Y' | '3Y' | '5Y';
 
@@ -14,6 +15,23 @@ interface Props {
   nameB: string;
   period: Period;
 }
+
+type ChartTooltipPayload = {
+  dataKey?: string | number;
+  value?: number;
+  payload?: {
+    actualA?: number;
+    actualB?: number;
+  };
+};
+
+type ChartDatum = {
+  date: string;
+  assetA?: number;
+  assetB?: number;
+  actualA?: number;
+  actualB?: number;
+};
 
 export default function FundComparisonChart({ schemeCodeA, schemeCodeB, nameA, nameB, period }: Props) {
   const fundA = useFundData(schemeCodeA);
@@ -33,13 +51,14 @@ export default function FundComparisonChart({ schemeCodeA, schemeCodeB, nameA, n
     const normB = normalizeTo100(fB);
 
     // Merge by date
-    const map = new Map<string, any>();
+    const map = new Map<string, ChartDatum>();
     normA.forEach(d => {
       map.set(d.date, { date: d.date, assetA: d.normalized, actualA: parseFloat(d.nav) });
     });
     normB.forEach(d => {
-      if (map.has(d.date)) {
-        map.set(d.date, { ...map.get(d.date), assetB: d.normalized, actualB: parseFloat(d.nav) });
+      const existing = map.get(d.date);
+      if (existing) {
+        map.set(d.date, { ...existing, assetB: d.normalized, actualB: parseFloat(d.nav) });
       } else {
         map.set(d.date, { date: d.date, assetB: d.normalized, actualB: parseFloat(d.nav) });
       }
@@ -60,7 +79,7 @@ export default function FundComparisonChart({ schemeCodeA, schemeCodeB, nameA, n
 
   const oneDayStats = useMemo(() => {
     if (period !== '1D' || !fundA.navData || !fundB.navData) return null;
-    const calc1D = (data: any[]) => {
+    const calc1D = (data: NavPoint[]) => {
       if (data.length < 2) return null;
       const latest = parseFloat(data[0].nav);
       const prev = parseFloat(data[1].nav);
@@ -84,13 +103,47 @@ export default function FundComparisonChart({ schemeCodeA, schemeCodeB, nameA, n
     return <div className="text-red-400 text-sm">Failed to load chart: {error}</div>;
   }
 
+  const renderTooltip = ({ active, payload, label }: TooltipContentProps<TooltipValueType, string | number>) => {
+    if (!active || !payload?.length) return null;
+
+    return (
+      <div className="max-w-[min(78vw,320px)] rounded-lg border border-white/10 bg-[#0b0c10]/95 p-3 text-xs shadow-xl">
+        <div className="mb-2 text-gray-400">{label}</div>
+        <div className="space-y-2">
+          {payload.map((entry) => {
+            const isFirstFund = entry.dataKey === 'assetA';
+            const point = entry.payload as ChartTooltipPayload['payload'] | undefined;
+            const actual = isFirstFund ? point?.actualA : point?.actualB;
+            const fundName = isFirstFund ? nameA : nameB;
+            const value = typeof entry.value === 'number' ? entry.value : null;
+            const returnPct = value === null ? null : value - 100;
+
+            return (
+              <div key={String(entry.dataKey)} className="min-w-0">
+                <div className="truncate font-medium text-white" title={fundName}>{fundName}</div>
+                <div className="text-gray-400">
+                  NAV: ₹{actual?.toFixed(2) ?? 'N/A'}
+                  {returnPct !== null && (
+                    <span className={returnPct >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      {' '}| {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="mb-6 mt-4">
+    <div className="mb-4 mt-2 sm:mb-6 sm:mt-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-md font-medium text-gray-300">Normalized Performance (Rebased to 100)</h3>
+        <h3 className="text-sm font-medium text-gray-300 sm:text-base">Normalized Performance (Rebased to 100)</h3>
       </div>
       
-      <div className="h-[320px] w-full bg-black/20 rounded-xl p-4 border border-white/5 relative">
+      <div className="h-[260px] w-full bg-black/20 rounded-xl p-2 border border-white/5 relative sm:h-[320px] sm:p-4">
         {period === '1D' && oneDayStats ? (
           <div className="flex h-full items-center justify-center gap-12">
             <div className="text-center">
@@ -143,27 +196,7 @@ export default function FundComparisonChart({ schemeCodeA, schemeCodeB, nameA, n
                 domain={['auto', 'auto']} 
                 tickFormatter={(val) => val.toFixed(0)}
               />
-              <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(11, 12, 16, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} 
-                itemStyle={{ color: '#fff', fontSize: '13px' }}
-                labelStyle={{ color: '#8a9199', fontSize: '12px', marginBottom: '4px' }}
-                formatter={(value: any, name: any, props: any) => {
-                  const actual = name === 'assetA' ? props.payload.actualA : props.payload.actualB;
-                  const fundName = name === 'assetA' ? nameA : nameB;
-                  const returnPct = value - 100;
-                  return [
-                    <div key={name} className="flex flex-col">
-                      <span className="font-medium text-white">{fundName}</span>
-                      <span className="text-gray-400 text-xs">
-                        NAV: ₹{actual?.toFixed(2)} | <span className={returnPct >= 0 ? 'text-green-400' : 'text-red-400'}>
-                          {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(2)}%
-                        </span>
-                      </span>
-                    </div>, 
-                    ''
-                  ];
-                }}
-              />
+              <Tooltip content={renderTooltip} />
               <Area type="monotone" dataKey="assetA" stroke="none" fill="url(#colorA)" />
               <Area type="monotone" dataKey="assetB" stroke="none" fill="url(#colorB)" />
               <Line type="monotone" dataKey="assetA" stroke="#3B82F6" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#3B82F6', stroke: '#fff' }} />

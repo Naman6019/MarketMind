@@ -28,6 +28,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Stock price-history comparison charts render when `stock_prices_daily` or fallback history exists.
 - Next.js `/api/*` proxy pattern is the required frontend/backend boundary.
 - GitHub Actions handles scheduled fetch jobs, not Vercel cron.
+- Mobile dashboard layout now uses a single active workspace for chat or comparison, preventing the input and comparison canvas from being clipped on phones.
 
 ## In Progress
 - Expanding stock coverage beyond the current Nifty-focused list.

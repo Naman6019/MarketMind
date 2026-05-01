@@ -26,6 +26,7 @@
 - [x] Added stock price-history comparison charts for source-neutral quant data.
 - [x] Next.js `/api/*` proxy pattern enforced as frontend/backend boundary.
 - [x] GitHub Actions handles scheduled fetch jobs, not Vercel cron.
+- [x] Fixed mobile dashboard clipping by using a single active chat/comparison workspace and compact comparison chart spacing.
 
 ## Blocked
 - None currently.

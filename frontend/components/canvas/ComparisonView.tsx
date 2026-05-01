@@ -232,9 +232,9 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
     );
 
     return (
-      <div className="comparison-detail p-6 bg-[var(--panel-bg)] rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden shadow-2xl">
+      <div className="comparison-detail p-3 sm:p-6 bg-[var(--panel-bg)] rounded-xl sm:rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden shadow-2xl">
         <div className="mb-6 px-2">
-          <h2 className="text-2xl font-bold text-white tracking-tight">Premium Stock Comparison</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Premium Stock Comparison</h2>
           <p className="text-sm text-gray-400 mt-1">
             Price, risk, and source-neutral fundamentals from MarketMind data
           </p>
@@ -307,19 +307,19 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
   const periods: Period[] = ['1D', '6M', '1Y', '3Y', '5Y'];
 
   return (
-    <div className="comparison-detail p-6 bg-[var(--panel-bg)] rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden shadow-2xl">
-      <div className="mb-8 flex justify-between items-center px-4">
+    <div className="comparison-detail p-3 sm:p-6 bg-[var(--panel-bg)] rounded-xl sm:rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden shadow-2xl">
+      <div className="mb-5 flex flex-col gap-4 px-1 sm:mb-8 sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Mutual Fund Comparison</h2>
+          <h2 className="text-xl font-bold text-white tracking-tight sm:text-2xl">Mutual Fund Comparison</h2>
           <p className="text-sm text-gray-400 mt-1">Analyzing performance and risk metrics head-to-head</p>
         </div>
 
-        <div className="flex bg-[#1f2833] rounded-lg p-1.5 border border-white/10 shadow-inner gap-1.5">
+        <div className="flex max-w-full overflow-x-auto bg-[#1f2833] rounded-lg p-1.5 border border-white/10 shadow-inner gap-1.5">
           {periods.map(p => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`px-4 py-2 text-xs font-medium rounded-md transition-all duration-200 ${period === p ? 'bg-[var(--accent-color)] text-black shadow-lg scale-105 font-bold' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+              className={`shrink-0 px-3 py-2 text-xs font-medium rounded-md transition-all duration-200 sm:px-4 ${period === p ? 'bg-[var(--accent-color)] text-black shadow-lg scale-105 font-bold' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
               {p}
             </button>
@@ -350,8 +350,8 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
       )}
       
       {!loading && !error && fundA.meta && fundB.meta && (
-        <div className="flex-1 overflow-y-auto px-4 custom-scroll space-y-10 pb-12">
-          <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 bg-black/10 rounded-2xl p-6 border border-white/5">
+        <div className="flex-1 overflow-y-auto px-1 custom-scroll space-y-6 pb-8 sm:space-y-10 sm:px-4 sm:pb-12">
+          <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 bg-black/10 rounded-xl p-3 border border-white/5 sm:rounded-2xl sm:p-6">
             <FundComparisonChart 
               schemeCodeA={ids[0]} 
               schemeCodeB={ids[1]} 
@@ -362,7 +362,7 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
           </section>
 
           <section className="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
-            <div className="pt-6 border-t border-white/10">
+            <div className="pt-4 border-t border-white/10 sm:pt-6">
               <FundDetailsPanel 
                 schemeCodeA={ids[0]} 
                 schemeCodeB={ids[1]} 

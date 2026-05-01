@@ -12,10 +12,19 @@ import ComparisonView from '@/components/canvas/ComparisonView';
 export default function DashboardLayout() {
   const { isCanvasOpen, activeView, selectedIds, auxiliaryData, toggleCanvas } = useCanvasStore();
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
 
   // Wake up the backend on load
   useEffect(() => {
     fetch('/api/keepalive').catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobile(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
   }, []);
 
   const renderCanvasContent = () => {
@@ -64,6 +73,24 @@ export default function DashboardLayout() {
       </aside>
 
       <main className="flex-1 h-full relative flex overflow-hidden gap-4">
+        {isMobile ? (
+          <div className="mobile-workspace">
+            {isCanvasOpen ? (
+              <>
+                <button
+                  onClick={toggleCanvas}
+                  className="absolute top-3 right-3 z-50 bg-[#1f2833] border border-white/10 p-2 rounded-lg text-white hover:bg-white/10 transition-colors"
+                  aria-label="Close comparison"
+                >
+                  <ChevronRight size={20} />
+                </button>
+                {renderCanvasContent()}
+              </>
+            ) : (
+              <ChatWindow />
+            )}
+          </div>
+        ) : (
         <PanelGroup direction="horizontal">
           <Panel defaultSize={isCanvasOpen ? 40 : 100} minSize={30} className="relative transition-all duration-300 ease-in-out chat-area">
             {!isSidebarVisible && (
@@ -96,6 +123,7 @@ export default function DashboardLayout() {
             </>
           )}
         </PanelGroup>
+        )}
       </main>
     </div>
   );
