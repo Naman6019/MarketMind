@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests supabase python-dotenv pandas openpyxl lxml html5lib beautifulsoup4 pypdf
+        run: pip install -r backend/requirements.txt
 
       - name: Run AMFI MF Sync
         env:
@@ -34,8 +34,15 @@ jobs:
           MF_HISTORY_SCHEME_LIMIT: "200"
         run: python backend/scripts/sync_mf_history.py
 
-      - name: Sync MF Metadata
+      - name: Sync MF Metadata (AMFI - TER/AUM)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python backend/scripts/sync_mf_metadata.py
+
+      - name: Sync MF Metadata (IndianAPI - AUM/Returns)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          INDIANAPI_KEY: ${{ secrets.INDIAN_API_KEY }}
+        run: python -m backend.app.jobs.sync_mf_from_indianapi
