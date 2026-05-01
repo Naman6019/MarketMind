@@ -55,6 +55,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.routes.quant import router as quant_router
+app.include_router(quant_router)
+
 @app.get("/")
 def read_root():
     return {"message": "MarketMind API is running. Use /health for health checks."}
@@ -248,11 +251,31 @@ def fetch_source_neutral_fundamentals(symbol: str) -> dict | None:
         return None
     clean_symbol = symbol.replace(".NS", "").replace(".BO", "").upper()
     try:
-        comparison = build_stock_compare([clean_symbol])
-        item = next(iter((comparison.get("comparison") or {}).values()), None)
-        if not item or item.get("error"):
+        from app.repositories.stock_repository import StockRepository
+        from dataclasses import asdict
+        repo = StockRepository()
+        comp = repo.compare_stocks([clean_symbol])
+        data = comp.get(clean_symbol)
+        if not data or not data.get("profile"):
             return None
-        return item.get("fundamentals") or None
+            
+        profile = asdict(data["profile"]) if data["profile"] else {}
+        ratios = asdict(data["ratios"]) if data["ratios"] else {}
+        
+        # Model must not be asked to invent missing financial values
+        # Explicit nulls are passed where data is missing
+        fundamentals = {
+            "industry": profile.get("industry", None),
+            "pe": ratios.get("pe", None),
+            "pb": ratios.get("pb", None),
+            "ev_ebitda": ratios.get("ev_ebitda", None),
+            "roe": ratios.get("roe", None),
+            "roce": ratios.get("roce", None),
+            "debt_to_equity": ratios.get("debt_to_equity", None),
+            "market_cap": ratios.get("market_cap", None),
+            "dividend_yield": ratios.get("dividend_yield", None)
+        }
+        return fundamentals
     except Exception as e:
         logger.warning("Stock fundamentals lookup failed for %s: %s", clean_symbol, e)
         return None
@@ -1253,17 +1276,34 @@ async def chat_endpoint(req: ChatRequest):
                     db_data.update(risk_metrics)
                     comparison_results[entity] = db_data
                 elif asset_type != "mutual_fund" and (stock_symbol or yf_ticker):
-                    stock_compare = build_stock_compare([stock_symbol or yf_ticker])
-                    comparison_results[entity] = next(
-                        iter((stock_compare.get("comparison") or {}).values()),
-                        {"error": "Data not found for this entity"},
-                    )
+                    from app.repositories.stock_repository import StockRepository
+                    from dataclasses import asdict
+                    repo = StockRepository()
+                    sym = stock_symbol or yf_ticker
+                    comp = repo.compare_stocks([sym])
+                    c_data = comp.get(sym)
+                    if c_data and c_data.get("profile"):
+                        # Model must not be asked to invent missing financial values
+                        comparison_results[entity] = {
+                            "profile": asdict(c_data["profile"]) if c_data.get("profile") else {},
+                            "ratios": asdict(c_data["ratios"]) if c_data.get("ratios") else {},
+                        }
+                    else:
+                        comparison_results[entity] = {"error": "Data not found for this entity"}
                 elif asset_type != "mutual_fund":
-                    stock_compare = build_stock_compare([entity])
-                    comparison_results[entity] = next(
-                        iter((stock_compare.get("comparison") or {}).values()),
-                        {"error": "Data not found for this entity"},
-                    )
+                    from app.repositories.stock_repository import StockRepository
+                    from dataclasses import asdict
+                    repo = StockRepository()
+                    comp = repo.compare_stocks([entity])
+                    c_data = comp.get(entity)
+                    if c_data and c_data.get("profile"):
+                        # Model must not be asked to invent missing financial values
+                        comparison_results[entity] = {
+                            "profile": asdict(c_data["profile"]) if c_data.get("profile") else {},
+                            "ratios": asdict(c_data["ratios"]) if c_data.get("ratios") else {},
+                        }
+                    else:
+                        comparison_results[entity] = {"error": "Data not found for this entity"}
                 else:
                     comparison_results[entity] = {"error": "Data not found for this entity"}
                     

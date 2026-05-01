@@ -28,7 +28,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Stock price-history comparison charts render when `stock_prices_daily` or fallback history exists.
 - Next.js `/api/*` proxy pattern is the required frontend/backend boundary.
 - GitHub Actions handles scheduled fetch jobs, not Vercel cron.
-- Mobile dashboard layout now uses a single active workspace for chat or comparison, with the chat header fixed at the top and input fixed at the bottom on phones.
+- Mobile dashboard layout keeps chat mounted behind comparison overlays, and chat state lives in a shared store so query/messages survive canvas-to-chat switches.
 
 ## In Progress
 - Expanding stock coverage beyond the current Nifty-focused list.
@@ -46,6 +46,8 @@ MarketMind is a research-only Indian equities and mutual fund app.
 
 ## Stock Data Architecture
 - Source-neutral tables are defined in `backend/migrations/20260501_source_neutral_stock_data.sql`.
+- Stock data DTOs live in `backend/app/models/stock_models.py`.
+- Supabase stock repository access lives in `backend/app/repositories/stock_repository.py`.
 - Provider adapters live in `backend/app/providers/`.
 - Ratio calculation lives in `backend/app/services/ratio_engine.py`.
 - GitHub Actions runs stock universe, EOD price, fundamentals, and ratio jobs.

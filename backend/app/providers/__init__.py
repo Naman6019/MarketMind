@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_fundamentals_provider() -> FundamentalsProvider:
-    selected = os.environ.get("FUNDAMENTALS_PROVIDER", "manual").strip().lower()
+    selected = os.environ.get("STOCK_DATA_PROVIDER", "manual").strip().lower()
     manual = ManualFundamentalsProvider()
     provider: FundamentalsProvider = manual
     if selected == "finedge":

@@ -1,0 +1,34 @@
+name: Sync Stock Universe
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run Job
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          STOCK_DATA_PROVIDER: ${{ secrets.STOCK_DATA_PROVIDER }}
+          INDIANAPI_KEY: ${{ secrets.INDIANAPI_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "Error: Missing SUPABASE_URL or SUPABASE_SERVICE_KEY"
+            exit 1
+          fi
+          python -m backend.app.jobs.sync_stock_universe

@@ -1,6 +1,7 @@
 """
 Calculate ratios_snapshot rows from source-neutral financial_statements.
 """
+# DEPRECATED: Replaced by provider adapter layer. Do not use in new code.
 import logging
 import os
 import sys

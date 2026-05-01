@@ -1,31 +1,22 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Send } from 'lucide-react';
 import { useCanvasStore } from '@/store/useCanvasStore';
-
-type AssetType = 'auto' | 'stock' | 'mutual_fund';
-
-type Message = {
-  id: string;
-  role: 'user' | 'system';
-  content: string;
-};
+import { AssetType, Message, useChatStore } from '@/store/useChatStore';
 
 export default function ChatWindow() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'system',
-      content: 'Welcome to MarketMind. I monitor NSE/BSE quant data and latest financial news. How can I assist your market research today?',
-    }
-  ]);
-  const [input, setInput] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [assetType, setAssetType] = useState<AssetType>('auto');
   const { setView, setIds, openCanvas } = useCanvasStore();
+  const messages = useChatStore((state) => state.messages);
+  const input = useChatStore((state) => state.input);
+  const isProcessing = useChatStore((state) => state.isProcessing);
+  const assetType = useChatStore((state) => state.assetType);
+  const setInput = useChatStore((state) => state.setInput);
+  const setIsProcessing = useChatStore((state) => state.setIsProcessing);
+  const setAssetType = useChatStore((state) => state.setAssetType);
+  const addMessage = useChatStore((state) => state.addMessage);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -50,7 +41,7 @@ export default function ChatWindow() {
     if (!text) return;
 
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text };
-    setMessages((prev) => [...prev, userMsg]);
+    addMessage(userMsg);
     setInput('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -76,15 +67,9 @@ export default function ChatWindow() {
         }
       }
       
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now().toString(), role: 'system', content: data.answer },
-      ]);
+      addMessage({ id: Date.now().toString(), role: 'system', content: data.answer });
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now().toString(), role: 'system', content: 'Error: Unable to reach MarketMind core. Make sure the server is running.' },
-      ]);
+      addMessage({ id: Date.now().toString(), role: 'system', content: 'Error: Unable to reach MarketMind core. Make sure the server is running.' });
     } finally {
       setIsProcessing(false);
     }

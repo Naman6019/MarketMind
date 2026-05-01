@@ -1,4 +1,5 @@
 """
+# DEPRECATED: Replaced by provider adapter layer. Do not use in new code.
 Sync NSE stock universe metadata into the source-neutral stocks table.
 """
 import logging

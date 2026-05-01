@@ -15,6 +15,14 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from supabase import create_client
 
 from mf_ingest_utils import (
@@ -386,9 +394,15 @@ def upsert_holdings(supabase, holdings: list[dict[str, Any]]) -> int:
     if not holdings:
         return 0
 
+    unique_holdings = {}
+    for h in holdings:
+        key = (h["scheme_code"], h["as_of_date"], h["security_name"], h.get("isin"))
+        unique_holdings[key] = h
+    deduped_holdings = list(unique_holdings.values())
+
     written = 0
-    for i in range(0, len(holdings), BATCH_SIZE):
-        batch = holdings[i:i + BATCH_SIZE]
+    for i in range(0, len(deduped_holdings), BATCH_SIZE):
+        batch = deduped_holdings[i:i + BATCH_SIZE]
         try:
             supabase.table("mutual_fund_holdings").upsert(
                 batch,

@@ -4,6 +4,7 @@ Sync fundamentals from the configured provider.
 Manual provider is a no-op because local rows are already in Supabase. Paid
 providers are intentionally disabled until their API keys and mapping code exist.
 """
+# DEPRECATED: Replaced by provider adapter layer. Do not use in new code.
 import logging
 import os
 import sys

@@ -75,8 +75,11 @@ export default function DashboardLayout() {
       <main className="flex-1 h-full relative flex overflow-hidden gap-4">
         {isMobile ? (
           <div className="mobile-workspace">
-            {isCanvasOpen ? (
-              <>
+            <div className={`chat-area relative h-full w-full ${isCanvasOpen ? 'hidden' : 'flex'}`} aria-hidden={isCanvasOpen}>
+              <ChatWindow />
+            </div>
+            {isCanvasOpen && (
+              <div className="absolute inset-0 z-40 flex min-h-0 min-w-0">
                 <button
                   onClick={toggleCanvas}
                   className="absolute top-3 right-3 z-50 bg-[#1f2833] border border-white/10 p-2 rounded-lg text-white hover:bg-white/10 transition-colors"
@@ -85,10 +88,6 @@ export default function DashboardLayout() {
                   <ChevronRight size={20} />
                 </button>
                 {renderCanvasContent()}
-              </>
-            ) : (
-              <div className="chat-area relative h-full w-full">
-                <ChatWindow />
               </div>
             )}
           </div>

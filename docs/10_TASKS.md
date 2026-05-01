@@ -28,7 +28,9 @@
 - [x] GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 - [x] Fixed mobile dashboard clipping by using a single active chat/comparison workspace and compact comparison chart spacing.
 - [x] Fixed mobile chat positioning so the header stays visible and the input stays at the bottom.
+- [x] Fixed mobile comparison canvas state loss by keeping chat mounted behind the canvas overlay and moving chat state into a shared store.
 - [x] Fixed landing page wide-screen right-side void by removing fixed hero width caps and using full-width sections.
+- [x] Added internal stock DTOs and a Supabase repository layer for source-neutral stock data.
 
 ## Blocked
 - None currently.

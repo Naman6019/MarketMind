@@ -10,9 +10,7 @@ type MetricValue = string | number | null | undefined;
 type FundamentalMetric = Record<string, MetricValue>;
 type ComparisonMetric = Record<string, unknown>;
 type AuxiliaryData = {
-  quant_data?: {
-    comparison?: Record<string, ComparisonMetric>;
-  };
+  quant_data?: any;
 };
 
 interface Props {
@@ -122,6 +120,57 @@ const buildPriceRows = (comparison: Record<string, ComparisonMetric>) => {
   return Array.from(byDate.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
 };
 
+const mapQuantResponse = (data: any) => {
+  if (!data || !data.profiles) return data.comparison || {};
+  const mapped: Record<string, any> = {};
+  for (const sym of data.available || []) {
+    const profile = data.profiles[sym] || {};
+    const ratios = data.ratios[sym] || {};
+    const fin = data.financials[sym] || [];
+    const latest_qtr = fin.find((f: any) => f.period_type === 'quarterly') || {};
+    const latest_ann = fin.find((f: any) => f.period_type === 'annual') || {};
+    const sh = data.shareholding[sym] || [];
+    const latest_sh = sh[0] || {};
+    const price_hist = data.price_history[sym] || [];
+    const latest_price = price_hist.length > 0 ? price_hist[price_hist.length - 1].close : null;
+    
+    mapped[sym] = {
+      price: latest_price,
+      market_cap: ratios.market_cap,
+      enterprise_value: ratios.enterprise_value,
+      fundamentals: {
+        industry: profile.industry,
+        pe: ratios.pe,
+        pb: ratios.pb,
+        ps: ratios.ps,
+        ev_ebitda: ratios.ev_ebitda,
+        roe: ratios.roe,
+        roce: ratios.roce,
+        roa: ratios.roa,
+        debt_to_equity: ratios.debt_to_equity,
+        dividend_yield: ratios.dividend_yield,
+        sales_growth_1y: ratios.sales_growth_1y,
+        sales_growth_3y: ratios.sales_growth_3y,
+        profit_growth_1y: ratios.profit_growth_1y,
+        profit_growth_3y: ratios.profit_growth_3y,
+        eps_growth_1y: ratios.eps_growth_1y,
+        eps_growth_3y: ratios.eps_growth_3y,
+        revenue_qtr: latest_qtr.revenue,
+        net_profit_qtr: latest_qtr.net_profit,
+        revenue_ann: latest_ann.revenue,
+        net_profit_ann: latest_ann.net_profit,
+        promoter_holding: latest_sh.promoter_holding,
+        fii_holding: latest_sh.fii_holding,
+        dii_holding: latest_sh.dii_holding,
+        public_holding: latest_sh.public_holding,
+        source: profile.source
+      },
+      price_history: price_hist
+    };
+  }
+  return mapped;
+};
+
 export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
   const [period, setPeriod] = useState<Period>('1Y');
 
@@ -136,7 +185,7 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
   const [stockError, setStockError] = useState<string | null>(null);
 
   useEffect(() => {
-    const hasAuxComparison = Boolean(auxiliaryData?.quant_data?.comparison);
+    const hasAuxComparison = Boolean(auxiliaryData?.quant_data && (auxiliaryData.quant_data.comparison || auxiliaryData.quant_data.profiles));
     if (isMF || hasAuxComparison || ids.length < 2) return;
 
     let cancelled = false;
@@ -148,7 +197,7 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
         return res.json();
       })
       .then(data => {
-        if (!cancelled) setFetchedComparison(data.comparison || {});
+        if (!cancelled) setFetchedComparison(mapQuantResponse(data));
       })
       .catch(error => {
         if (!cancelled) setStockError((error as Error).message);
@@ -164,33 +213,35 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
   }
 
   if (!isMF) {
-    const comparison = auxiliaryData?.quant_data?.comparison || fetchedComparison;
+    const comparison = mapQuantResponse(auxiliaryData?.quant_data) || fetchedComparison;
     const entities = Object.keys(comparison);
     const metrics: Array<[string, string, (value: MetricValue) => string]> = [
       ['Price', 'price', formatPrice],
-      ['Change', 'change_pct', formatPercent],
-      ['P/E Ratio', 'pe_ratio', formatValue],
       ['Market Cap', 'market_cap', formatMarketCap],
-      ['Beta', 'beta', formatValue],
-      ['Alpha vs Nifty', 'alpha_vs_nifty', formatPercent],
-      ['RSI (14D)', 'rsi_14d', formatValue],
-      ['Technical Rating', 'tv_recommendation', formatTechnicalRating],
-      ['Industry', 'fundamentals.industry', formatValue],
-      ['PB Ratio', 'fundamentals.pb', formatValue],
-      ['EV / EBITDA', 'fundamentals.ev_ebitda', formatValue],
+      ['Enterprise Value', 'enterprise_value', formatMarketCap],
+      ['P/E', 'fundamentals.pe', formatValue],
+      ['P/B', 'fundamentals.pb', formatValue],
+      ['P/S', 'fundamentals.ps', formatValue],
+      ['EV/EBITDA', 'fundamentals.ev_ebitda', formatValue],
       ['ROE', 'fundamentals.roe', formatRatioPercent],
       ['ROCE', 'fundamentals.roce', formatRatioPercent],
-      ['Debt to Equity', 'fundamentals.debt_to_equity', formatValue],
+      ['ROA', 'fundamentals.roa', formatRatioPercent],
+      ['Debt/Equity', 'fundamentals.debt_to_equity', formatValue],
       ['Dividend Yield', 'fundamentals.dividend_yield', formatRatioPercent],
-      ['EPS TTM', 'fundamentals.eps_ttm', formatPrice],
+      ['Sales Growth (1Y)', 'fundamentals.sales_growth_1y', formatRatioPercent],
       ['Sales Growth (3Y)', 'fundamentals.sales_growth_3y', formatRatioPercent],
+      ['Profit Growth (1Y)', 'fundamentals.profit_growth_1y', formatRatioPercent],
       ['Profit Growth (3Y)', 'fundamentals.profit_growth_3y', formatRatioPercent],
+      ['EPS Growth (1Y)', 'fundamentals.eps_growth_1y', formatRatioPercent],
       ['EPS Growth (3Y)', 'fundamentals.eps_growth_3y', formatRatioPercent],
       ['Latest Quarterly Revenue', 'fundamentals.revenue_qtr', formatValue],
       ['Latest Quarterly Net Profit', 'fundamentals.net_profit_qtr', formatValue],
+      ['Latest Annual Revenue', 'fundamentals.revenue_ann', formatValue],
+      ['Latest Annual Net Profit', 'fundamentals.net_profit_ann', formatValue],
       ['Promoter Holding', 'fundamentals.promoter_holding', formatRatioPercent],
       ['FII Holding', 'fundamentals.fii_holding', formatRatioPercent],
       ['DII Holding', 'fundamentals.dii_holding', formatRatioPercent],
+      ['Public Holding', 'fundamentals.public_holding', formatRatioPercent],
       ['Data Source', 'fundamentals.source', formatValue],
     ];
     const colors = ['#5eead4', '#60a5fa', '#f97316', '#a78bfa'];
@@ -198,9 +249,9 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
       const fundamentals = comparison[entity]?.fundamentals as FundamentalMetric | undefined;
       return fundamentals && Object.values(fundamentals).some(value => value !== null && value !== undefined && value !== '');
     });
-    const valuationRows = chartRows(comparison, [['PE', 'pe_ratio'], ['PB', 'fundamentals.pb'], ['EV/EBITDA', 'fundamentals.ev_ebitda'], ['Div Yield', 'fundamentals.dividend_yield']]);
+    const valuationRows = chartRows(comparison, [['PE', 'fundamentals.pe'], ['PB', 'fundamentals.pb'], ['EV/EBITDA', 'fundamentals.ev_ebitda'], ['Div Yield', 'fundamentals.dividend_yield']]);
     const quarterlyRows = chartRows(comparison, [['Revenue Qtr', 'fundamentals.revenue_qtr'], ['NP Qtr', 'fundamentals.net_profit_qtr']]);
-    const qualityRows = chartRows(comparison, [['ROCE', 'fundamentals.roce'], ['ROE', 'fundamentals.roe']]);
+    const qualityRows = chartRows(comparison, [['ROCE', 'fundamentals.roce'], ['ROE', 'fundamentals.roe'], ['ROA', 'fundamentals.roa']]);
     const growthRows = chartRows(comparison, [['Sales 3Y', 'fundamentals.sales_growth_3y'], ['Profit 3Y', 'fundamentals.profit_growth_3y'], ['EPS 3Y', 'fundamentals.eps_growth_3y']]);
     const holdingRows = chartRows(comparison, [['Promoter', 'fundamentals.promoter_holding'], ['FII', 'fundamentals.fii_holding'], ['DII', 'fundamentals.dii_holding']]);
     const priceRows = buildPriceRows(comparison);

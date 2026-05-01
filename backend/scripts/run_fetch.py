@@ -3,6 +3,7 @@ Standalone EOD Stock Fetcher script for GitHub Actions.
 Reads SUPABASE_URL and SUPABASE_KEY from environment variables.
 """
 import os
+# DEPRECATED: Replaced by provider adapter layer. Do not use in new code.
 import sys
 import time
 import logging
