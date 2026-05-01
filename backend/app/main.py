@@ -4,6 +4,7 @@ import logging
 import asyncio
 import sys
 import time
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Literal
 from dotenv import load_dotenv
@@ -473,6 +474,228 @@ def fetch_news(query: str, ticker: str, sentiment_flag: bool = False) -> list:
         logger.error(f"News Error: {e}")
         return []
 
+DISCLAIMER = "> ⚠️ **Disclaimer:** *MarketMind is an informational research tool only. Nothing presented here constitutes investment advice, a solicitation, or a recommendation to buy or sell any security. Always conduct your own research and consult a SEBI-registered Investment Advisor before making any financial decision.*"
+DATA_UNAVAILABLE = "Data Unavailable"
+
+ADVICE_REPLACEMENTS = {
+    "attractive option for long-term investment": "candidate for further independent research",
+    "attractive option": "candidate for further independent research",
+    "investors should": "readers can",
+    "investor should": "readers can",
+    "buy or sell": "act on",
+    "buy": "positive technical rating",
+    "sell": "negative technical rating",
+    "long-term investment": "longer-horizon research",
+    "investment decision": "research decision",
+    "invest": "research further",
+}
+
+def _is_missing(value: Any) -> bool:
+    return value is None or value == "" or str(value).strip().upper() in {"N/A", "NA", "NONE", "NULL", "NAN"}
+
+def _safe_value(value: Any) -> str:
+    if _is_missing(value):
+        return "N/A"
+    if isinstance(value, float):
+        return f"{value:.2f}".rstrip("0").rstrip(".")
+    return str(value)
+
+def _format_percent(value: Any) -> str:
+    if _is_missing(value):
+        return "N/A"
+    if isinstance(value, str) and value.strip().endswith("%"):
+        return value
+    try:
+        return f"{float(value):.2f}%"
+    except (TypeError, ValueError):
+        return _safe_value(value)
+
+def _format_price(value: Any) -> str:
+    if _is_missing(value):
+        return "N/A"
+    try:
+        return f"₹{float(value):,.2f}"
+    except (TypeError, ValueError):
+        return _safe_value(value)
+
+def _format_inr_market_cap(value: Any) -> str:
+    if _is_missing(value):
+        return "N/A"
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return _safe_value(value)
+
+    if amount >= 1_00_00_00_00_000:
+        return f"₹{amount / 1_00_00_00_00_000:.2f} lakh crore"
+    if amount >= 1_00_00_000:
+        return f"₹{amount / 1_00_00_000:.2f} crore"
+    return f"₹{amount:,.0f}"
+
+def _risk_period(data: dict) -> str:
+    period = data.get("risk_period") or data.get("historical_period") or ""
+    text = str(period).split()[0].upper()
+    return text if text else "period"
+
+def _safe_recommendation(value: Any) -> str:
+    if _is_missing(value):
+        return "N/A"
+    text = str(value).strip().lower()
+    mapping = {
+        "strong buy": "Strong positive technical rating",
+        "buy": "Positive technical rating",
+        "sell": "Negative technical rating",
+        "strong sell": "Strong negative technical rating",
+    }
+    return mapping.get(text, str(value))
+
+def _is_unavailable_entity(data: Any) -> bool:
+    return not isinstance(data, dict) or bool(data.get("error"))
+
+def _markdown_table(headers: list[str], rows: list[list[str]]) -> str:
+    header = "| " + " | ".join(headers) + " |"
+    divider = "| " + " | ".join(["---"] * len(headers)) + " |"
+    body = ["| " + " | ".join(row) + " |" for row in rows]
+    return "\n".join([header, divider, *body])
+
+def _stock_metric_rows(data: dict) -> list[tuple[str, str]]:
+    period = _risk_period(data)
+    return [
+        ("Timestamp", _safe_value(data.get("timestamp"))),
+        ("Price", _format_price(data.get("price"))),
+        ("Change", _format_percent(data.get("change_pct"))),
+        ("P/E Ratio", _safe_value(data.get("pe_ratio"))),
+        ("Market Cap", _format_inr_market_cap(data.get("market_cap"))),
+        (f"Beta ({period})", _safe_value(data.get("beta"))),
+        (f"Alpha vs Nifty ({period})", _format_percent(data.get("alpha_vs_nifty"))),
+        ("RSI (14D)", _safe_value(data.get("rsi_14d"))),
+        ("Technical Rating", _safe_recommendation(data.get("tv_recommendation"))),
+    ]
+
+def _fund_metric_rows(data: dict) -> list[tuple[str, str]]:
+    period = _risk_period(data)
+    nav = data.get("nav", data.get("price"))
+    nav_date = data.get("nav_date", data.get("date"))
+    return [
+        ("Matched Name", _safe_value(data.get("name"))),
+        ("NAV", _format_price(nav)),
+        ("NAV Date", _safe_value(nav_date)),
+        ("Fund House", _safe_value(data.get("fund_house"))),
+        ("Category", _safe_value(data.get("category"))),
+        ("Expense Ratio", _safe_value(data.get("expense_ratio"))),
+        ("AUM", _format_inr_market_cap(data.get("aum"))),
+        (f"Beta ({period})", _safe_value(data.get("beta"))),
+        (f"Alpha vs Nifty ({period})", _format_percent(data.get("alpha_vs_nifty"))),
+    ]
+
+def _looks_like_fund(data: dict) -> bool:
+    return any(key in data for key in ["nav", "nav_date", "fund_house", "expense_ratio"]) and "timestamp" not in data
+
+def _comparison_rows(comparison: dict) -> tuple[list[str], list[list[str]], list[str]]:
+    entities = list(comparison.keys())
+    valid_entities = {name: data for name, data in comparison.items() if not _is_unavailable_entity(data)}
+    notes = [
+        f"{name} could not be matched in MarketMind data."
+        for name, data in comparison.items()
+        if _is_unavailable_entity(data)
+    ]
+
+    uses_fund_metrics = any(_looks_like_fund(data) for data in valid_entities.values())
+    metric_rows = _fund_metric_rows if uses_fund_metrics else _stock_metric_rows
+    metric_names: list[str] = []
+    values_by_entity: dict[str, dict[str, str]] = {}
+
+    for entity in entities:
+        data = comparison.get(entity, {})
+        values_by_entity[entity] = {}
+        if _is_unavailable_entity(data):
+            continue
+        for metric, value in metric_rows(data):
+            if metric not in metric_names:
+                metric_names.append(metric)
+            values_by_entity[entity][metric] = value
+
+    if not metric_names:
+        metric_names = ["Status"]
+
+    rows = []
+    for metric in metric_names:
+        row = [metric]
+        for entity in entities:
+            row.append(values_by_entity.get(entity, {}).get(metric, DATA_UNAVAILABLE))
+        rows.append(row)
+
+    rows.append(["Data Status", *[
+        DATA_UNAVAILABLE if _is_unavailable_entity(comparison.get(entity)) else "Available"
+        for entity in entities
+    ]])
+
+    return ["Metric", *entities], rows, notes
+
+def _data_table_markdown(intent: str, quant_data: Any, screener_results: list | None = None) -> tuple[str, list[str]]:
+    notes: list[str] = []
+    if intent == "screener":
+        rows = []
+        for item in screener_results or []:
+            rows.append([
+                _safe_value(item.get("symbol")),
+                _safe_value(item.get("name")),
+                _format_price(item.get("price")),
+                _safe_value(item.get("pe_ratio")),
+                _safe_value(item.get("rsi")),
+            ])
+        return _markdown_table(["Symbol", "Name", "Price", "P/E", "RSI"], rows or [["N/A", "N/A", "N/A", "N/A", "N/A"]]), notes
+
+    if isinstance(quant_data, dict) and "comparison" in quant_data:
+        headers, rows, notes = _comparison_rows(quant_data.get("comparison") or {})
+        return _markdown_table(headers, rows), notes
+
+    if isinstance(quant_data, dict) and quant_data.get("error"):
+        return _markdown_table(["Metric", "Value"], [["Status", DATA_UNAVAILABLE], ["Reason", _safe_value(quant_data.get("error"))]]), notes
+
+    if isinstance(quant_data, dict) and quant_data:
+        rows = _fund_metric_rows(quant_data) if _looks_like_fund(quant_data) else _stock_metric_rows(quant_data)
+        return _markdown_table(["Metric", "Value"], [[metric, value] for metric, value in rows]), notes
+
+    return _markdown_table(["Metric", "Value"], [["Status", DATA_UNAVAILABLE]]), notes
+
+def _news_markdown(news_data: list) -> str:
+    if not news_data:
+        return "- No recent news found from configured sources."
+
+    rows = []
+    for item in news_data[:6]:
+        sentiment = f"**[{item.get('sentiment')}]** " if item.get("sentiment") else ""
+        published = _safe_value(item.get("published"))
+        source = _safe_value(item.get("source"))
+        title = _safe_value(item.get("title"))
+        rows.append(f"- {sentiment}{published} {source}: {title}")
+    return "\n".join(rows) if rows else "- No recent news found from configured sources."
+
+def _sanitize_research_text(text: str) -> str:
+    sanitized = text or ""
+    for bad, replacement in ADVICE_REPLACEMENTS.items():
+        pattern = rf"\b{re.escape(bad)}\b"
+        sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
+    return sanitized
+
+def _summary_subject(query: str, intent_info: dict, quant_data: Any) -> str:
+    if isinstance(quant_data, dict) and "comparison" in quant_data:
+        return " vs ".join(quant_data["comparison"].keys())
+    ticker = intent_info.get("ticker")
+    return ticker or query
+
+def _snapshot_line(intent: str, quant_data: Any) -> str:
+    if isinstance(quant_data, dict) and "comparison" in quant_data:
+        available = sum(1 for item in quant_data["comparison"].values() if not _is_unavailable_entity(item))
+        total = len(quant_data["comparison"])
+        return f"{available} of {total} requested entities have structured MarketMind data."
+    if isinstance(quant_data, dict) and quant_data.get("price"):
+        return f"Latest structured price is {_format_price(quant_data.get('price'))} with {_format_percent(quant_data.get('change_pct'))} change."
+    if isinstance(quant_data, dict) and quant_data.get("nav"):
+        return f"Latest structured NAV is {_format_price(quant_data.get('nav'))}."
+    return "Structured data is limited for this query."
+
 async def run_screener(filters: dict) -> list:
     """Screener Engine against stock universe using Supabase"""
     if not supabase:
@@ -530,51 +753,24 @@ NEVER give direct financial advice to buy or sell a specific stock."""
         ]
         return await function_ollama_chat(messages, format="text")
 
-    system_prompt = """You are MarketMind, a 3-agent stock market research assistant for Indian retail investors. 
-You are synthesizing data into a final response. 
+    table_markdown, data_notes = _data_table_markdown(intent, quant_data, screener_results)
+    news_markdown = _news_markdown(news_data)
+    subject = _summary_subject(query, intent_info, quant_data)
+    snapshot = _snapshot_line(intent, quant_data)
 
-## SYNTHESIS RULES
-1. Open with a one-line market context statement.
-2. Present quantitative data, comparison data, or screener results in a clean, scannable markdown table.
-3. If only ONE entity is being analyzed (even if the intent was comparison), DO NOT include a 'Compare with' or secondary value column. Only show the metrics for that specific entity.
-4. Follow with relevant news (if any), newest first. Including the [Sentiment] tag if provided.
-5. Close with a Trend Observation — Provide DEEP, ANALYTICAL reasoning here. Do not just regurgitate the numbers; explain exactly *why* the numbers matter together. Make your analysis highly educational, uncovering the 'why' behind the metrics. Provide well-reasoned hypotheses, not shallow summaries.
-6. Append the complete mandatory disclaimer at the very end. Format it precisely as a blockquote using `> ⚠️ **Disclaimer:**`.
-7. Ensure neat spacing. ALWAYS use double blank lines (`\n\n`) between the Snapshot, Table, News List, Trend Observation, and the final Disclaimer.
-
-## RESPONSE FORMAT MUST BE EXACTLY LIKE THIS:
-
-### [Topic] — Snapshot
-> [One-line current status]
-
-### Data Table
-| Metric | Value | 
-|---|---|
-| ... | ... |
-
-### News & Announcements *(last 48–72 hrs)*
-- **[SENTIMENT]** [DD MMM] [Source]: [One-line summary]
-...
-
-### Trend Observation
-
-[4–6 sentences. Neutral tone, highly detailed...]
-
-> ⚠️ **Disclaimer:** *MarketMind is an informational research tool only. Nothing presented here constitutes investment advice, a solicitation, or a recommendation to buy or sell any security. Always conduct your own research and consult a SEBI-registered Investment Advisor before making any financial decision.*
-
-## ABSOLUTE RULES
-- Never say "buy", "sell", "invest", "avoid". No advice.
-- Timestamp everything. 
-- Use the data provided. DO NOT HALLUCINATE NUMBERS. If data contains an "error" or is empty, clearly state "Data Unavailable" inside the table cells. Under NO circumstance should you generate generic or fake financial metrics.
-- Label Alpha and Beta with their time period (e.g., 'Alpha (1Y)') based on the data provided.
-"""
+    system_prompt = """You are MarketMind, a research-only Indian market analyst.
+Write only the Trend Observation paragraph.
+Use the provided structured facts only. Do not add new numbers.
+Use neutral research language. Do not use advice words or phrases like buy, sell, invest, avoid, investors should, attractive option, or long-term investment.
+If data is unavailable for an entity, mention that the comparison is limited by missing data.
+Keep it to 3-5 concise sentences."""
     
     context = f"""
 User Query: {query}
 Identified Intent: {intent}
 Identified Ticker: {intent_info.get('ticker')}
 
-Data Provided:
+Structured Data:
 {json.dumps(quant_data, indent=2)}
 
 News Data:
@@ -589,11 +785,29 @@ Screener Results:
         {"role": "user", "content": context}
     ]
     
-    response = await function_ollama_chat(messages, format="text")
-    if not response:
-        return "Sorry, I am facing connectivity issues with the intelligence core."
-        
-    return response
+    trend = await function_ollama_chat(messages, format="text")
+    if not trend:
+        trend = "The structured data above should be read as market context, not as a recommendation. Metrics can be useful for comparison, but missing values and source freshness limit the strength of any conclusion. Use the available figures as a starting point for independent research."
+    trend = _sanitize_research_text(trend.strip())
+
+    notes_markdown = ""
+    if data_notes:
+        notes_markdown = "\n\n### Data Notes\n" + "\n".join([f"- {note}" for note in data_notes])
+
+    return f"""### {subject} — Snapshot
+> {snapshot}
+
+### Data Table
+{table_markdown}{notes_markdown}
+
+### News & Announcements *(last 48-72 hrs)*
+{news_markdown}
+
+### Trend Observation
+
+{trend}
+
+{DISCLAIMER}"""
 
 @app.get("/api/trigger-fetch")
 async def trigger_eod_fetch(background_tasks: BackgroundTasks):
@@ -981,6 +1195,12 @@ async def chat_endpoint(req: ChatRequest):
             if sentiment:
                 news_items = await analyze_news_sentiment(news_items)
             news_data = news_items
+
+    if intent in ["news", "compare"] and not news_data:
+        news_items = fetch_news(req.query, ticker)
+        if sentiment:
+            news_items = await analyze_news_sentiment(news_items)
+        news_data = news_items
             
     final_answer = await synthesis_response(req.query, intent_info, quant_data, news_data, screener_results)
     response_json = {
@@ -993,6 +1213,7 @@ async def chat_endpoint(req: ChatRequest):
         entities = intent_info.get("compare_entities", [])
         if len(entities) >= 2:
             resolved_ids = []
+            comparison_payload = quant_data.get("comparison", {}) if isinstance(quant_data, dict) else {}
             fallback_map = {
                 "hdfc flexi cap": "118955",
                 "parag parikh flexi cap": "122639",
@@ -1001,6 +1222,8 @@ async def chat_endpoint(req: ChatRequest):
             }
             
             for entity in entities:
+                if comparison_payload and _is_unavailable_entity(comparison_payload.get(entity)):
+                    continue
                 ent_lower = entity.lower()
                 resolved = False
                 if asset_type != "stock":

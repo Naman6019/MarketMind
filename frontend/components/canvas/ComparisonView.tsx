@@ -5,38 +5,121 @@ import { useFundData } from '../../hooks/useFundData';
 import FundComparisonChart, { Period } from '../funds/FundComparisonChart';
 import FundDetailsPanel from '../funds/FundDetailsPanel';
 
+type MetricValue = string | number | null | undefined;
+type ComparisonMetric = Record<string, MetricValue>;
+type AuxiliaryData = {
+  quant_data?: {
+    comparison?: Record<string, ComparisonMetric>;
+  };
+};
 
 interface Props {
   ids: string[];
   type: 'STOCK' | 'MUTUAL_FUND';
+  auxiliaryData?: AuxiliaryData | null;
 }
 
-export default function ComparisonView({ ids, type }: Props) {
+const formatValue = (value: MetricValue) => {
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString('en-IN') : value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  return value;
+};
+
+const formatMarketCap = (value: MetricValue) => {
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return String(value);
+  if (amount >= 1_00_00_00_00_000) return `₹${(amount / 1_00_00_00_00_000).toFixed(2)} lakh crore`;
+  if (amount >= 1_00_00_000) return `₹${(amount / 1_00_00_000).toFixed(2)} crore`;
+  return `₹${amount.toLocaleString('en-IN')}`;
+};
+
+const formatPrice = (value: MetricValue) => {
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return String(value);
+  return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+};
+
+const formatPercent = (value: MetricValue) => {
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  if (typeof value === 'string' && value.endsWith('%')) return value;
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return String(value);
+  return `${amount.toFixed(2)}%`;
+};
+
+const formatTechnicalRating = (value: MetricValue) => {
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  const text = String(value).trim().toLowerCase();
+  const ratings: Record<string, string> = {
+    'strong buy': 'Strong positive technical rating',
+    buy: 'Positive technical rating',
+    sell: 'Negative technical rating',
+    'strong sell': 'Strong negative technical rating',
+  };
+  return ratings[text] || String(value);
+};
+
+export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
   const [period, setPeriod] = useState<Period>('1Y');
+
+  // Heuristic: if IDs are numeric, they are mutual fund scheme codes
+  const idA = ids?.[0] || null;
+  const idB = ids?.[1] || null;
+  const isMF = type === 'MUTUAL_FUND' || Boolean(idA && /^[0-9]+$/.test(idA));
+
+  const fundA = useFundData(isMF ? idA : null);
+  const fundB = useFundData(isMF ? idB : null);
 
   if (!ids || ids.length < 2) {
     return <div className="p-6 text-gray-400">Insufficient data for comparison.</div>;
   }
 
-  // Heuristic: if IDs are numeric, they are mutual fund scheme codes
-  const isMF = type === 'MUTUAL_FUND' || (ids[0] && /^[0-9]+$/.test(ids[0]));
-
-  const fundA = useFundData(isMF ? ids[0] : null);
-  const fundB = useFundData(isMF ? ids[1] : null);
-
   if (!isMF) {
+    const comparison = auxiliaryData?.quant_data?.comparison || {};
+    const entities = Object.keys(comparison);
+    const metrics: Array<[string, keyof ComparisonMetric, (value: MetricValue) => string]> = [
+      ['Price', 'price', formatPrice],
+      ['Change', 'change_pct', formatPercent],
+      ['P/E Ratio', 'pe_ratio', formatValue],
+      ['Market Cap', 'market_cap', formatMarketCap],
+      ['Beta', 'beta', formatValue],
+      ['Alpha vs Nifty', 'alpha_vs_nifty', formatPercent],
+      ['RSI (14D)', 'rsi_14d', formatValue],
+      ['Technical Rating', 'tv_recommendation', formatTechnicalRating],
+    ];
+
     return (
-      <div className="comparison-detail p-6 bg-[var(--panel-bg)] rounded-2xl h-full flex flex-col border border-white/10 text-white items-center justify-center text-center">
-        <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mb-4">
-          <svg className="w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
+      <div className="comparison-detail p-6 bg-[var(--panel-bg)] rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden shadow-2xl">
+        <div className="mb-6 px-2">
+          <h2 className="text-2xl font-bold text-white tracking-tight">Stock Comparison</h2>
+          <p className="text-sm text-gray-400 mt-1">Structured metrics from the latest MarketMind response</p>
         </div>
-        <h2 className="text-xl font-semibold mb-2">Stock Comparison Coming Soon</h2>
-        <p className="text-gray-400 max-w-md">
-          Direct stock-to-stock comparison with synchronized charts is currently being optimized for the next release. 
-          For now, please use the detailed view for individual stock analysis.
-        </p>
+        <div className="overflow-auto rounded-xl border border-white/10">
+          <table className="w-full min-w-[560px] border-collapse text-sm">
+            <thead className="bg-white/5 text-gray-300">
+              <tr>
+                <th className="px-4 py-3 text-left font-semibold">Metric</th>
+                {entities.map(entity => (
+                  <th key={entity} className="px-4 py-3 text-left font-semibold">{entity}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {metrics.map(([label, key, formatter]) => (
+                <tr key={label} className="border-t border-white/10">
+                  <td className="px-4 py-3 text-gray-400">{label}</td>
+                  {entities.map(entity => (
+                    <td key={`${entity}-${label}`} className="px-4 py-3 text-white">
+                      {formatter(comparison[entity]?.[key])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }

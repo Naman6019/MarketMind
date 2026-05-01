@@ -10,7 +10,7 @@ import MFDetailView from '@/components/canvas/MFDetailView';
 import ComparisonView from '@/components/canvas/ComparisonView';
 
 export default function DashboardLayout() {
-  const { isCanvasOpen, activeView, selectedIds, toggleCanvas, closeCanvas } = useCanvasStore();
+  const { isCanvasOpen, activeView, selectedIds, auxiliaryData, toggleCanvas } = useCanvasStore();
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
 
   // Wake up the backend on load
@@ -25,7 +25,7 @@ export default function DashboardLayout() {
       case 'MF_DETAIL':
         return <MFDetailView schemeCode={selectedIds[0]} />;
       case 'COMPARISON':
-        return <ComparisonView ids={selectedIds} type={selectedIds[0].match(/^[0-9]+$/) ? 'MUTUAL_FUND' : 'STOCK'} />;
+        return <ComparisonView ids={selectedIds} type={selectedIds[0].match(/^[0-9]+$/) ? 'MUTUAL_FUND' : 'STOCK'} auxiliaryData={auxiliaryData} />;
       default:
         return <div className="p-6 text-gray-400">Select an item to view details.</div>;
     }

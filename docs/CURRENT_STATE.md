@@ -1,6 +1,6 @@
 # Current State
 
-**Last Updated**: 2026-04-28
+**Last Updated**: 2026-05-01
 
 ## Project Summary
 MarketMind is a research-only Indian equities and mutual fund app.
@@ -21,6 +21,8 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Stock name resolver for broader NSE names and typo tolerance.
 - Fixed MF/NIFTY timezone mismatch in risk metrics.
 - Fixed MF comparison routing so it does not fall back to stock tickers.
+- Chat responses now render deterministic data tables from structured `quant_data`, including unavailable comparison entities and news fallback text.
+- Stock-to-stock comparison has a metric-only canvas panel driven by `/api/chat` `system_action` data.
 - Next.js `/api/*` proxy pattern is the required frontend/backend boundary.
 - GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 
@@ -32,8 +34,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 
 ## Known Gaps
 - `/api/quant` backend endpoint not built yet.
-- Direct stock-to-stock comparison canvas still pending.
-- Stock comparison canvas currently has a placeholder.
+- Stock comparison charts/history are still pending; current stock comparison canvas is metric-only.
 - Frontend proxy route rate limiting still pending.
 - YFinance rate limits often on Render.
 - Portfolio overlap is partial because AMFI holdings often returns `Nil`.

@@ -2,7 +2,7 @@
 
 ## Todo
 - [ ] Add a dedicated `/api/quant` backend endpoint to separate stock lookup from chat synthesis.
-- [ ] Build a direct stock-to-stock comparison canvas (currently optimized for MFs).
+- [ ] Add stock comparison charts/history beyond the current metric-only canvas.
 - [ ] Add rate limiting for frontend proxy routes (`/api/chat`, `/api/cron/sync-mf`).
 
 ## In Progress
@@ -19,6 +19,8 @@
 - [x] Stock name resolver for broader NSE names and typo tolerance.
 - [x] Fixed MF/NIFTY timezone mismatch in risk metrics.
 - [x] Fixed MF comparison routing so it does not fall back to stock tickers.
+- [x] Added deterministic `/api/chat` response tables with missing-entity notes, news fallback text, and safer research wording.
+- [x] Added metric-only stock-to-stock comparison canvas.
 - [x] Next.js `/api/*` proxy pattern enforced as frontend/backend boundary.
 - [x] GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 
@@ -26,7 +28,6 @@
 - None currently.
 
 ## Known Issues
-- Stock comparison canvas currently has a placeholder.
 - YFinance rate limits often on Render deployments.
 - [ ] Portfolio overlap is partial because AMFI holdings API often returns `Nil`.
 - News uses Google News RSS and can be slow.
