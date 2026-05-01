@@ -2,7 +2,7 @@
 
 ## Core Features
 1. **Chat & Intent Routing**:
-   - An AI chat interface that routes user queries to Quant, News, Screener, or Comparison pipelines.
+   - An AI chat interface that routes user queries to Quant, News, Stock Screening, or Comparison pipelines.
 2. **Interactive Canvas**:
    - Deep-dive UI for side-by-side comparison.
    - Head-to-Head Mutual Fund Comparison with normalized NAV charts (rebased to 100).

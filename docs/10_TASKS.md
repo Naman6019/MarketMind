@@ -1,8 +1,7 @@
 # Tasks
 
 ## Todo
-- [ ] Add a dedicated `/api/quant` backend endpoint to separate stock lookup from chat synthesis.
-- [ ] Add stock comparison charts/history beyond the current metric-only canvas.
+- [x] Add a dedicated `/api/quant` backend endpoint to separate stock lookup from chat synthesis.
 - [ ] Add rate limiting for frontend proxy routes (`/api/chat`, `/api/cron/sync-mf`).
 
 ## In Progress
@@ -21,6 +20,10 @@
 - [x] Fixed MF comparison routing so it does not fall back to stock tickers.
 - [x] Added deterministic `/api/chat` response tables with missing-entity notes, news fallback text, and safer research wording.
 - [x] Added metric-only stock-to-stock comparison canvas.
+- [x] Added legacy CSV import foundation and premium fundamental comparison charts.
+- [x] Replaced active CSV dependency with source-neutral stock provider architecture.
+- [x] Moved legacy CSV tooling under `backend/scripts/deprecated/`.
+- [x] Added stock price-history comparison charts for source-neutral quant data.
 - [x] Next.js `/api/*` proxy pattern enforced as frontend/backend boundary.
 - [x] GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 

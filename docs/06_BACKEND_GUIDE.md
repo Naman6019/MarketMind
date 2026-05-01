@@ -9,7 +9,7 @@
 ## Directory Structure
 - `app/main.py`: FastAPI entry point, endpoint definitions, and AI Agent Router logic.
 - `app/database.py`: Supabase client initialization.
-- `app/fetcher.py`: Data fetching logic (YFinance, Supabase lookups).
+- `app/fetcher.py`: On-demand stock fetching with NSE/local Supabase first; YFinance is fallback-only through quote/history fallback paths.
 - `app/nse_client.py`: Client for NSE bhavcopy/live data.
 - `app/stock_universe.py`: Logic for loading NSE constituent CSVs.
 - `scripts/`: Standalone cron scripts (`run_fetch.py`, `sync_mf.py`, `sync_mf_metadata.py`).

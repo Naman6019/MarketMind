@@ -34,3 +34,8 @@
 **Decision:** GitHub Actions for Scheduled Tasks.
 **Context:** Vercel serverless environments do not support native Python runtimes required for our fetching scripts.
 **Consequences:** Data fetching (`run_fetch.py`, `sync_mf.py`) is triggered via GitHub Actions cron, not Vercel cron.
+
+**Date:** 2026-05-01
+**Decision:** Use source-neutral stock tables and provider adapters for fundamentals.
+**Context:** CSV exports are not production-ready and paid provider choices may change.
+**Consequences:** Active stock comparison and AI chat read `/api/quant` source-neutral data. Paid providers can be added later without rewriting the app.

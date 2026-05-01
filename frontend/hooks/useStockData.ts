@@ -29,7 +29,8 @@ export function useStockData(ticker: string | null) {
     if (!ticker) return;
 
     if (cache.has(ticker)) {
-      setData(cache.get(ticker)!);
+      const cached = cache.get(ticker)!;
+      queueMicrotask(() => setData(cached));
       return;
     }
 
@@ -37,28 +38,20 @@ export function useStockData(ticker: string | null) {
       setLoading(true);
       setError(null);
       try {
-        // We'll use the existing /api/chat or a new endpoint? 
-        // Actually, let's hit our FastAPI backend directly for quant data
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const res = await fetch(`${baseUrl}/api/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: `Quant data for ${ticker} 1y` }),
-        });
+        const res = await fetch(`/api/quant/stocks/${encodeURIComponent(ticker)}/price-history?days=365`);
 
         if (!res.ok) throw new Error('Failed to fetch stock data');
         const result = await res.json();
-        
-        // The backend returns the quant data in the 'answer' or we can add a specific quant endpoint
-        // For now, let's assume we might need a dedicated quant endpoint if /api/chat is too heavy
-        // But wait, our FastAPI backend already has fetch_quant_data.
-        
-        // For the sake of the comparison canvas, let's just mock it or assume the backend provides it
-        // Actually, let's just use the mutual fund logic for now but inform the user we are working on stock-specific metrics
-        
+        const stockData = {
+          ticker,
+          history: result.price_history || [],
+          info: { name: ticker, price: 0, change: 0, changePercent: 0 },
+        };
+        cache.set(ticker, stockData);
+        setData(stockData);
         setLoading(false);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err) {
+        setError((err as Error).message);
         setLoading(false);
       }
     }

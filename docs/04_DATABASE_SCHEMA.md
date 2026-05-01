@@ -6,8 +6,17 @@ MarketMind uses Supabase (PostgreSQL) as its primary data store.
 ## Known Tables
 - `nifty_stocks`: Universe of supported Nifty Large/Mid/Small cap and Total Market stocks.
 - `stock_history`: Historical price and volume data. Used for EOD calculations and local NIFTY performance baselines.
+- `stocks`: Source-neutral stock metadata.
+- `stock_prices_daily`: Source-neutral OHLCV price history.
+- `financial_statements`: Quarterly and annual fundamentals.
+- `ratios_snapshot`: Provider or MarketMind-calculated ratio snapshots.
+- `shareholding_pattern`: Promoter, FII, DII, public holding rows.
+- `corporate_events`: Corporate action/event rows.
+- `data_provider_runs`: Provider job run audit log.
 - `mutual_funds`: Metadata for mutual funds (scheme codes, names, categories, TER, AUM).
 - `mutual_fund_history`: Historical NAV data used for MF charting, returns, Alpha, and Beta computations.
 
 ## TODOs
 - **Holdings/Overlap**: Schema details for portfolio overlap features are incomplete or rely on partial AMFI disclosures.
+
+See `docs/database-schema.md` for migration details.

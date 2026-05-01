@@ -3,10 +3,10 @@ import time
 import logging
 import math
 import os
+from datetime import date
 from app.database import supabase
 from app.nse_client import fetch_live_quote
 from app.stock_universe import load_stock_universe
-import yfinance as yf
 
 logger = logging.getLogger(__name__)
 STOCK_INFO_ENRICH_LIMIT = int(os.environ.get("STOCK_INFO_ENRICH_LIMIT", "120"))
@@ -44,8 +44,8 @@ def compute_rsi(data: pd.DataFrame, window=14):
 
 def fetch_single_ticker(ticker: str, category: str, nifty_hist: pd.DataFrame = None, enrich: bool = True):
     """
-    Task 2: Replace live YFinance call with fetch_live_quote().
-    Uses YFinance only for history-dependent metrics (RSI, Alpha).
+    Uses NSE/local sources first. YFinance is only reachable inside
+    fetch_live_quote's final fallback path.
     """
     data = {
         "symbol": ticker, "category": category, "rsi": None, "pe_ratio": None, 
@@ -63,23 +63,7 @@ def fetch_single_ticker(ticker: str, category: str, nifty_hist: pd.DataFrame = N
         if not enrich:
             return data
 
-        # 2. History-dependent metrics (Keep YFinance as fallback/supplement for now as requested)
-        # However, Task 2 Step 4 says replace the "live/on-demand YFinance call".
-        stock_symbol = f"{ticker}.NS"
-        if ticker == "NIFTY": stock_symbol = "^NSEI"
-        stock = yf.Ticker(stock_symbol)
-        
-        # We still need info for PE, Market Cap, Beta
-        info = stock.info
-        data["pe_ratio"] = info.get("trailingPE", info.get("forwardPE"))
-        data["market_cap"] = info.get("marketCap")
-        data["beta"] = info.get("beta")
-        rec = info.get("recommendationKey")
-        if rec and rec != "none":
-            data["recommendation"] = str(rec).replace('_', ' ').title()
-
-        # History for RSI and Alpha
-        hist = stock.history(period="3mo")
+        hist = get_local_history(ticker, 90)
         if not hist.empty:
             if not data["current_price"]:
                 data["current_price"] = float(round(hist['Close'].iloc[-1], 2))
@@ -103,6 +87,27 @@ def fetch_single_ticker(ticker: str, category: str, nifty_hist: pd.DataFrame = N
             
     return data
 
+
+def get_local_history(symbol: str, days: int = 100) -> pd.DataFrame:
+    if not supabase:
+        return pd.DataFrame()
+    try:
+        res = supabase.table('stock_history')\
+            .select('close, date')\
+            .eq('symbol', symbol)\
+            .order('date', desc=True)\
+            .limit(days)\
+            .execute()
+        if res.data:
+            df = pd.DataFrame(res.data)
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date')
+            df.rename(columns={'close': 'Close'}, inplace=True)
+            return df
+    except Exception as e:
+        logger.warning("Local stock history failed for %s: %s", symbol, e)
+    return pd.DataFrame()
+
 def run_eod_fetch():
     # This is handled by scripts/run_fetch.py in the new architecture
     # but we keep a compatible version here if needed for on-demand
@@ -114,16 +119,31 @@ def run_eod_fetch():
     stock_universe = load_stock_universe()
     universe_tickers = list(stock_universe.keys())
     
-    try:
-        nifty_baseline = yf.Ticker("^NSEI").history(period="3mo")
-    except:
-        nifty_baseline = None
+    nifty_baseline = get_local_history("NIFTY", 100)
 
     for index, ticker in enumerate(universe_tickers):
         category = stock_universe.get(ticker, {}).get("category", "Unknown")
         should_enrich = index < STOCK_INFO_ENRICH_LIMIT
         data = fetch_single_ticker(ticker, category, nifty_baseline if should_enrich else None, enrich=should_enrich)
         try:
+            meta = stock_universe.get(ticker, {})
+            supabase.table('stocks').upsert({
+                "symbol": ticker,
+                "exchange": "NSE",
+                "company_name": meta.get("company_name") or ticker,
+                "isin": meta.get("isin"),
+                "series": "EQ",
+                "industry": meta.get("industry"),
+                "is_active": True,
+            }, on_conflict='symbol').execute()
+            if data.get("current_price") is not None:
+                supabase.table('stock_prices_daily').upsert({
+                    "symbol": ticker,
+                    "date": date.today().isoformat(),
+                    "close": data.get("current_price"),
+                    "adj_close": data.get("current_price"),
+                    "source": "marketmind_fetcher",
+                }, on_conflict='symbol,date,source').execute()
             supabase.table('nifty_stocks').upsert(data).execute()
             results.append(data)
         except Exception as e:

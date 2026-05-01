@@ -23,6 +23,9 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Fixed MF comparison routing so it does not fall back to stock tickers.
 - Chat responses now render deterministic data tables from structured `quant_data`, including unavailable comparison entities and news fallback text.
 - Stock-to-stock comparison has a metric-only canvas panel driven by `/api/chat` `system_action` data.
+- Stock fundamentals now use a source-neutral provider architecture with `/api/quant/stocks/*` endpoints. CSV fundamentals are no longer required for active app paths.
+- Legacy CSV tooling is isolated under `backend/scripts/deprecated/` and is not used by routes or GitHub Actions.
+- Stock price-history comparison charts render when `stock_prices_daily` or fallback history exists.
 - Next.js `/api/*` proxy pattern is the required frontend/backend boundary.
 - GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 
@@ -33,10 +36,15 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - **Premium Landing Page (`/`) with Framer Motion animations and Dashboard moved to (`/dashboard`)** (UI layout fixes ongoing).
 
 ## Known Gaps
-- `/api/quant` backend endpoint not built yet.
-- Stock comparison charts/history are still pending; current stock comparison canvas is metric-only.
+- Paid fundamentals provider mappings are not implemented yet.
 - Frontend proxy route rate limiting still pending.
 - YFinance rate limits often on Render.
 - Portfolio overlap is partial because AMFI holdings often returns `Nil`.
 - News uses Google News RSS and can be slow.
 - Landing page has an empty black space on the right side. This persists because the root background container isn't stretching fully to 100% viewport width on wide screens, likely due to a conflict between Windows scrollbar width calculations and Tailwind's w-full/overflow-x-hidden properties.
+
+## Stock Data Architecture
+- Source-neutral tables are defined in `backend/migrations/20260501_source_neutral_stock_data.sql`.
+- Provider adapters live in `backend/app/providers/`.
+- Ratio calculation lives in `backend/app/services/ratio_engine.py`.
+- GitHub Actions runs stock universe, EOD price, fundamentals, and ratio jobs.

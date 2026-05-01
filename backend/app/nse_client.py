@@ -40,7 +40,7 @@ def fetch_nse_bhavcopy(trade_date: date) -> list:
         results = []
         for _, row in df.iterrows():
             # Calculate change_pct if PREVCLOSE is available
-            change_pct = 0.0
+            change_pct = None
             if 'PREVCLOSE' in row and row['PREVCLOSE'] != 0:
                 change_pct = ((row['CLOSE'] - row['PREVCLOSE']) / row['PREVCLOSE']) * 100
                 
@@ -54,7 +54,7 @@ def fetch_nse_bhavcopy(trade_date: date) -> list:
                 "date": row['TIMESTAMP'],
                 # For compatibility with existing schema:
                 "current_price": row['CLOSE'],
-                "change_pct": round(float(change_pct), 2)
+                "change_pct": round(float(change_pct), 2) if change_pct is not None else None
             })
             
         # Clean up
@@ -94,7 +94,7 @@ def fetch_bse_bhavcopy(trade_date: date) -> list:
         
         results = []
         for _, row in df.iterrows():
-            change_pct = 0.0
+            change_pct = None
             if 'PREVCLOSE' in row and row['PREVCLOSE'] != 0:
                 change_pct = ((row['CLOSE'] - row['PREVCLOSE']) / row['PREVCLOSE']) * 100
                 
@@ -106,7 +106,7 @@ def fetch_bse_bhavcopy(trade_date: date) -> list:
                 "low": row['LOW'],
                 "close": row['CLOSE'],
                 "current_price": row['CLOSE'],
-                "change_pct": round(float(change_pct), 2),
+                "change_pct": round(float(change_pct), 2) if change_pct is not None else None,
                 "volume": row['NO_SHRS'],
                 "date": trade_date.strftime("%Y-%m-%d")
             })

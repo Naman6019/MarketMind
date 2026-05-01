@@ -26,7 +26,12 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          FUNDAMENTALS_PROVIDER: manual
           STOCK_UNIVERSE_INDEX: NIFTY500
           STOCK_INFO_ENRICH_LIMIT: "120"
           STOCK_YFINANCE_FALLBACK_LIMIT: "150"
-        run: python backend/scripts/run_fetch.py
+        run: |
+          python backend/scripts/sync_stock_universe.py
+          python backend/scripts/run_fetch.py
+          python backend/scripts/sync_fundamentals.py
+          python backend/scripts/calculate_ratios.py

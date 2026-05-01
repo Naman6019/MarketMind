@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useFundData } from '../../hooks/useFundData';
 import FundComparisonChart, { Period } from '../funds/FundComparisonChart';
 import FundDetailsPanel from '../funds/FundDetailsPanel';
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 type MetricValue = string | number | null | undefined;
-type ComparisonMetric = Record<string, MetricValue>;
+type FundamentalMetric = Record<string, unknown>;
+type ComparisonMetric = Record<string, unknown>;
 type AuxiliaryData = {
   quant_data?: {
     comparison?: Record<string, ComparisonMetric>;
@@ -20,13 +22,13 @@ interface Props {
 }
 
 const formatValue = (value: MetricValue) => {
-  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'Unavailable';
   if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString('en-IN') : value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
   return value;
 };
 
 const formatMarketCap = (value: MetricValue) => {
-  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'Unavailable';
   const amount = Number(value);
   if (!Number.isFinite(amount)) return String(value);
   if (amount >= 1_00_00_00_00_000) return `₹${(amount / 1_00_00_00_00_000).toFixed(2)} lakh crore`;
@@ -35,22 +37,31 @@ const formatMarketCap = (value: MetricValue) => {
 };
 
 const formatPrice = (value: MetricValue) => {
-  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'Unavailable';
   const amount = Number(value);
   if (!Number.isFinite(amount)) return String(value);
   return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 };
 
 const formatPercent = (value: MetricValue) => {
-  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'Unavailable';
   if (typeof value === 'string' && value.endsWith('%')) return value;
   const amount = Number(value);
   if (!Number.isFinite(amount)) return String(value);
   return `${amount.toFixed(2)}%`;
 };
 
+const formatRatioPercent = (value: MetricValue) => {
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'Unavailable';
+  if (typeof value === 'string' && value.endsWith('%')) return value;
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return String(value);
+  const percent = Math.abs(amount) <= 1 ? amount * 100 : amount;
+  return `${percent.toFixed(2)}%`;
+};
+
 const formatTechnicalRating = (value: MetricValue) => {
-  if (value === null || value === undefined || value === '' || value === 'N/A') return 'N/A';
+  if (value === null || value === undefined || value === '' || value === 'N/A') return 'Unavailable';
   const text = String(value).trim().toLowerCase();
   const ratings: Record<string, string> = {
     'strong buy': 'Strong positive technical rating',
@@ -59,6 +70,56 @@ const formatTechnicalRating = (value: MetricValue) => {
     'strong sell': 'Strong negative technical rating',
   };
   return ratings[text] || String(value);
+};
+
+const metricValue = (data: ComparisonMetric | undefined, key: string): MetricValue => {
+  if (!data) return undefined;
+  if (!key.includes('.')) return data[key] as MetricValue;
+  const [parent, child] = key.split('.');
+  const nested = data[parent];
+  if (nested && typeof nested === 'object') return (nested as FundamentalMetric)[child];
+  return undefined;
+};
+
+const metricNumber = (data: ComparisonMetric | undefined, key: string) => {
+  const value = metricValue(data, key);
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const chartRows = (
+  comparison: Record<string, ComparisonMetric>,
+  metrics: Array<[string, string]>,
+) => {
+  return metrics.map(([label, key]) => {
+    const row: Record<string, string | number | null> = { metric: label };
+    Object.entries(comparison).forEach(([entity, data]) => {
+      row[entity] = metricNumber(data, key);
+    });
+    return row;
+  });
+};
+
+const buildPriceRows = (comparison: Record<string, ComparisonMetric>) => {
+  const byDate = new Map<string, Record<string, string | number | null>>();
+
+  Object.entries(comparison).forEach(([entity, data]) => {
+    const history = data.price_history;
+    if (!Array.isArray(history)) return;
+
+    history.slice(-180).forEach((point) => {
+      if (!point || typeof point !== 'object') return;
+      const row = point as Record<string, unknown>;
+      const date = String(row.date || '');
+      const close = Number(row.close);
+      if (!date || !Number.isFinite(close)) return;
+      const existing = byDate.get(date) || { date };
+      existing[entity] = close;
+      byDate.set(date, existing);
+    });
+  });
+
+  return Array.from(byDate.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
 };
 
 export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
@@ -71,15 +132,41 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
 
   const fundA = useFundData(isMF ? idA : null);
   const fundB = useFundData(isMF ? idB : null);
+  const [fetchedComparison, setFetchedComparison] = useState<Record<string, ComparisonMetric>>({});
+  const [stockError, setStockError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const hasAuxComparison = Boolean(auxiliaryData?.quant_data?.comparison);
+    if (isMF || hasAuxComparison || ids.length < 2) return;
+
+    let cancelled = false;
+    const symbols = ids.map(id => encodeURIComponent(id)).join(',');
+
+    fetch(`/api/quant/stocks/compare?symbols=${symbols}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load stock comparison');
+        return res.json();
+      })
+      .then(data => {
+        if (!cancelled) setFetchedComparison(data.comparison || {});
+      })
+      .catch(error => {
+        if (!cancelled) setStockError((error as Error).message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auxiliaryData, ids, isMF]);
 
   if (!ids || ids.length < 2) {
     return <div className="p-6 text-gray-400">Insufficient data for comparison.</div>;
   }
 
   if (!isMF) {
-    const comparison = auxiliaryData?.quant_data?.comparison || {};
+    const comparison = auxiliaryData?.quant_data?.comparison || fetchedComparison;
     const entities = Object.keys(comparison);
-    const metrics: Array<[string, keyof ComparisonMetric, (value: MetricValue) => string]> = [
+    const metrics: Array<[string, string, (value: MetricValue) => string]> = [
       ['Price', 'price', formatPrice],
       ['Change', 'change_pct', formatPercent],
       ['P/E Ratio', 'pe_ratio', formatValue],
@@ -88,37 +175,128 @@ export default function ComparisonView({ ids, type, auxiliaryData }: Props) {
       ['Alpha vs Nifty', 'alpha_vs_nifty', formatPercent],
       ['RSI (14D)', 'rsi_14d', formatValue],
       ['Technical Rating', 'tv_recommendation', formatTechnicalRating],
+      ['Industry', 'fundamentals.industry', formatValue],
+      ['PB Ratio', 'fundamentals.pb', formatValue],
+      ['EV / EBITDA', 'fundamentals.ev_ebitda', formatValue],
+      ['ROE', 'fundamentals.roe', formatRatioPercent],
+      ['ROCE', 'fundamentals.roce', formatRatioPercent],
+      ['Debt to Equity', 'fundamentals.debt_to_equity', formatValue],
+      ['Dividend Yield', 'fundamentals.dividend_yield', formatRatioPercent],
+      ['EPS TTM', 'fundamentals.eps_ttm', formatPrice],
+      ['Sales Growth (3Y)', 'fundamentals.sales_growth_3y', formatRatioPercent],
+      ['Profit Growth (3Y)', 'fundamentals.profit_growth_3y', formatRatioPercent],
+      ['EPS Growth (3Y)', 'fundamentals.eps_growth_3y', formatRatioPercent],
+      ['Latest Quarterly Revenue', 'fundamentals.revenue_qtr', formatValue],
+      ['Latest Quarterly Net Profit', 'fundamentals.net_profit_qtr', formatValue],
+      ['Promoter Holding', 'fundamentals.promoter_holding', formatRatioPercent],
+      ['FII Holding', 'fundamentals.fii_holding', formatRatioPercent],
+      ['DII Holding', 'fundamentals.dii_holding', formatRatioPercent],
+      ['Data Source', 'fundamentals.source', formatValue],
     ];
+    const colors = ['#5eead4', '#60a5fa', '#f97316', '#a78bfa'];
+    const hasFundamentals = entities.some(entity => {
+      const fundamentals = comparison[entity]?.fundamentals as FundamentalMetric | undefined;
+      return fundamentals && Object.values(fundamentals).some(value => value !== null && value !== undefined && value !== '');
+    });
+    const valuationRows = chartRows(comparison, [['PE', 'pe_ratio'], ['PB', 'fundamentals.pb'], ['EV/EBITDA', 'fundamentals.ev_ebitda'], ['Div Yield', 'fundamentals.dividend_yield']]);
+    const quarterlyRows = chartRows(comparison, [['Revenue Qtr', 'fundamentals.revenue_qtr'], ['NP Qtr', 'fundamentals.net_profit_qtr']]);
+    const qualityRows = chartRows(comparison, [['ROCE', 'fundamentals.roce'], ['ROE', 'fundamentals.roe']]);
+    const growthRows = chartRows(comparison, [['Sales 3Y', 'fundamentals.sales_growth_3y'], ['Profit 3Y', 'fundamentals.profit_growth_3y'], ['EPS 3Y', 'fundamentals.eps_growth_3y']]);
+    const holdingRows = chartRows(comparison, [['Promoter', 'fundamentals.promoter_holding'], ['FII', 'fundamentals.fii_holding'], ['DII', 'fundamentals.dii_holding']]);
+    const priceRows = buildPriceRows(comparison);
+
+    const renderBarChart = (title: string, rows: Record<string, string | number | null>[], suffix = '%') => (
+      <section className="rounded-xl border border-white/10 bg-black/10 p-4">
+        <h3 className="mb-3 text-sm font-semibold text-gray-200">{title}</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={rows}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+              <XAxis dataKey="metric" stroke="#9ca3af" fontSize={12} />
+              <YAxis stroke="#9ca3af" fontSize={12} tickFormatter={(value) => `${value}${suffix}`} />
+              <Tooltip
+                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                contentStyle={{ background: '#111827', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#fff' }}
+                formatter={(value) => {
+                  const formatted = formatValue(value as MetricValue);
+                  return [formatted === 'Unavailable' ? formatted : `${formatted}${suffix}`, ''];
+                }}
+              />
+              {entities.map((entity, index) => (
+                <Bar key={entity} dataKey={entity} fill={colors[index % colors.length]} radius={[4, 4, 0, 0]} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+    );
 
     return (
       <div className="comparison-detail p-6 bg-[var(--panel-bg)] rounded-2xl h-full flex flex-col border border-white/10 text-white overflow-hidden shadow-2xl">
         <div className="mb-6 px-2">
-          <h2 className="text-2xl font-bold text-white tracking-tight">Stock Comparison</h2>
-          <p className="text-sm text-gray-400 mt-1">Structured metrics from the latest MarketMind response</p>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Premium Stock Comparison</h2>
+          <p className="text-sm text-gray-400 mt-1">
+            Price, risk, and source-neutral fundamentals from MarketMind data
+          </p>
         </div>
-        <div className="overflow-auto rounded-xl border border-white/10">
-          <table className="w-full min-w-[560px] border-collapse text-sm">
-            <thead className="bg-white/5 text-gray-300">
-              <tr>
-                <th className="px-4 py-3 text-left font-semibold">Metric</th>
-                {entities.map(entity => (
-                  <th key={entity} className="px-4 py-3 text-left font-semibold">{entity}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.map(([label, key, formatter]) => (
-                <tr key={label} className="border-t border-white/10">
-                  <td className="px-4 py-3 text-gray-400">{label}</td>
+        <div className="custom-scroll flex-1 space-y-5 overflow-y-auto pr-2">
+          {priceRows.length > 0 && (
+            <section className="rounded-xl border border-white/10 bg-black/10 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-gray-200">Price History</h3>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={priceRows}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                    <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} />
+                    <YAxis stroke="#9ca3af" fontSize={12} />
+                    <Tooltip contentStyle={{ background: '#111827', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#fff' }} />
+                    {entities.map((entity, index) => (
+                      <Line key={entity} type="monotone" dataKey={entity} stroke={colors[index % colors.length]} strokeWidth={2} dot={false} connectNulls />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          )}
+          {hasFundamentals && (
+            <div className="grid gap-4 xl:grid-cols-2">
+              {renderBarChart('Valuation Metrics', valuationRows, '')}
+              {renderBarChart('Latest Quarterly Revenue and Profit', quarterlyRows, '')}
+              {renderBarChart('Quality Metrics', qualityRows)}
+              {renderBarChart('Growth Metrics', growthRows)}
+              {renderBarChart('Shareholding Mix', holdingRows)}
+              {renderBarChart('Debt to Equity', chartRows(comparison, [['Debt/Equity', 'fundamentals.debt_to_equity']]), '')}
+            </div>
+          )}
+          {!hasFundamentals && (
+            <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-100">
+              {stockError || 'Fundamentals are unavailable because no fundamentals provider has supplied these fields yet.'}
+            </div>
+          )}
+          <div className="overflow-auto rounded-xl border border-white/10">
+            <table className="w-full min-w-[720px] border-collapse text-sm">
+              <thead className="bg-white/5 text-gray-300">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold">Metric</th>
                   {entities.map(entity => (
-                    <td key={`${entity}-${label}`} className="px-4 py-3 text-white">
-                      {formatter(comparison[entity]?.[key])}
-                    </td>
+                    <th key={entity} className="px-4 py-3 text-left font-semibold">{entity}</th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {metrics.map(([label, key, formatter]) => (
+                  <tr key={label} className="border-t border-white/10">
+                    <td className="px-4 py-3 text-gray-400">{label}</td>
+                    {entities.map(entity => (
+                      <td key={`${entity}-${label}`} className="px-4 py-3 text-white">
+                        {formatter(metricValue(comparison[entity], key))}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     );

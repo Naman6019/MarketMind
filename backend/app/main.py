@@ -8,7 +8,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Literal
 from dotenv import load_dotenv
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
@@ -32,6 +32,12 @@ from app.database import supabase
 from app.fetcher import run_eod_fetch
 from app.nse_client import fetch_live_quote
 from app.stock_universe import resolve_stock_symbol
+from app.services.quant_service import (
+    build_stock_compare,
+    build_stock_profile,
+    get_stock_financials,
+    get_stock_price_history,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -108,7 +114,7 @@ async def route_query(query: str, asset_type: str = "auto") -> dict:
         asset_instruction = """
 The user explicitly selected Mutual Funds mode. Treat ambiguous names as mutual fund scheme names, not stocks.
 Preserve category words from the user query like Small Cap, Flexi Cap, Mid Cap, Large Cap, Index, Direct, Growth in compare_entities.
-Do not classify mutual fund requests as stock screeners.
+Do not classify mutual fund requests as stock screening requests.
 """
     elif asset_type == "stock":
         asset_instruction = """
@@ -117,7 +123,7 @@ Do not classify stock requests as mutual fund requests.
 """
 
     system_prompt = """You are the Router Agent for MarketMind. Classify the user query intent.
-If the query asks to filter, list, or screen stocks (e.g., "Find stocks with PE < 20", "Show me oversold stocks", "Mid cap stocks with RSI < 30"), set intent to 'screener' and populate 'screener_filters'.
+If the query asks to filter, list, or screen stocks (e.g., "Find stocks with PE < 20", "Show me oversold stocks", "Mid cap stocks with RSI < 30"), set intent to 'screen' and populate 'screen_filters'.
 If the query asks to compare two or more mutual funds or stocks, set intent to 'compare' and populate 'compare_entities' with a list of their names (e.g. ["HDFC Flexi Cap", "Parag Parikh Flexi Cap"]).
 Otherwise, use 'quant', 'news', 'both', or 'general'.
 Extract primary NSE/BSE ticker explicitly (e.g. RELIANCE.NS, ^NSEI for Nifty). 
@@ -126,11 +132,11 @@ Check for historical period mentions (e.g., '1m', '1y') and sentiment mentions.
 
 Output strict JSON only format:
 {
-  "intent": "quant|news|both|general|screener|compare",
+  "intent": "quant|news|both|general|screen|compare",
   "ticker": "TICKER.NS",
   "historical_period": "1mo|1y|5y|max", 
   "sentiment_flag": true/false,
-  "screener_filters": {
+  "screen_filters": {
     "min_pe": 0,
     "max_pe": 100,
     "rsi_range": {"min": 0, "max": 100},
@@ -138,7 +144,7 @@ Output strict JSON only format:
   },
   "compare_entities": ["Asset 1 Name", "Asset 2 Name"]
 }
-If a filter is not mentioned, exclude it from screener_filters. Default historical_period to "1mo" if not mentioned. Default sentiment_flag to false unless news sentiment is requested.
+If a filter is not mentioned, exclude it from screen_filters. Default historical_period to "1mo" if not mentioned. Default sentiment_flag to false unless news sentiment is requested.
     """ + asset_instruction
     messages = [
         {"role": "system", "content": system_prompt},
@@ -237,6 +243,32 @@ def is_market_open() -> bool:
     market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
     return market_open <= now <= market_close
 
+def fetch_source_neutral_fundamentals(symbol: str) -> dict | None:
+    if not symbol:
+        return None
+    clean_symbol = symbol.replace(".NS", "").replace(".BO", "").upper()
+    try:
+        comparison = build_stock_compare([clean_symbol])
+        item = next(iter((comparison.get("comparison") or {}).values()), None)
+        if not item or item.get("error"):
+            return None
+        return item.get("fundamentals") or None
+    except Exception as e:
+        logger.warning("Stock fundamentals lookup failed for %s: %s", clean_symbol, e)
+        return None
+
+def enrich_with_source_neutral_fundamentals(data: dict, symbol: str) -> dict:
+    fundamentals = fetch_source_neutral_fundamentals(symbol)
+    if not fundamentals:
+        return data
+    enriched = dict(data)
+    enriched["fundamentals"] = fundamentals
+    if enriched.get("pe_ratio") in [None, "N/A"]:
+        enriched["pe_ratio"] = fundamentals.get("pe", "N/A")
+    if enriched.get("market_cap") in [None, "N/A"]:
+        enriched["market_cap"] = fundamentals.get("market_cap", "N/A")
+    return enriched
+
 async def resolve_mf_ticker(entity_name: str) -> str:
     """Helper to map a name to a yfinance-compatible ticker or ISIN."""
     fallback_map = {
@@ -309,7 +341,7 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
                 data["beta"] = 1.0
                 data["alpha_vs_nifty"] = 0.0
 
-            return data
+            return enrich_with_source_neutral_fundamentals(data, symbol)
         except Exception as e:
             logger.warning(f"Supabase local snapshot error for {symbol}: {e}")
             return None
@@ -347,6 +379,9 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
 
     if is_market_open():
         if clean_ticker == "NIFTY":
+            local_nifty = get_local_quant_snapshot("NIFTY")
+            if local_nifty:
+                return cache_and_return(local_nifty)
             live_nifty = get_live_nifty_snapshot()
             if live_nifty:
                 return cache_and_return(live_nifty)
@@ -366,7 +401,7 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
                     "rsi_14d": local_data.get("rsi_14d", "N/A"),
                     "tv_recommendation": local_data.get("tv_recommendation", "N/A")
                 }
-                return cache_and_return(live_data)
+                return cache_and_return(enrich_with_source_neutral_fundamentals(live_data, clean_ticker))
 
     # Prefer local data for NIFTY off-market, and for off-market short-window queries.
     if clean_ticker == "NIFTY" or (period in ["1d", "1mo"] and not is_market_open()):
@@ -418,7 +453,7 @@ def fetch_quant_data(ticker: str, period: str = "1mo") -> dict:
             "tv_recommendation": "N/A",
             "aum": info.get("totalAssets", "N/A")
         }
-        return cache_and_return(data)
+        return cache_and_return(enrich_with_source_neutral_fundamentals(data, clean_ticker))
     except Exception as e:
         logger.error(f"Quant Error: {e}")
         local_data = get_local_quant_snapshot(clean_ticker)
@@ -510,6 +545,18 @@ def _format_percent(value: Any) -> str:
     except (TypeError, ValueError):
         return _safe_value(value)
 
+def _format_ratio_percent(value: Any) -> str:
+    if _is_missing(value):
+        return "N/A"
+    if isinstance(value, str) and value.strip().endswith("%"):
+        return value
+    try:
+        amount = float(value)
+        percent = amount * 100 if abs(amount) <= 1 else amount
+        return f"{percent:.2f}%"
+    except (TypeError, ValueError):
+        return _safe_value(value)
+
 def _format_price(value: Any) -> str:
     if _is_missing(value):
         return "N/A"
@@ -560,7 +607,7 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> str:
 
 def _stock_metric_rows(data: dict) -> list[tuple[str, str]]:
     period = _risk_period(data)
-    return [
+    rows = [
         ("Timestamp", _safe_value(data.get("timestamp"))),
         ("Price", _format_price(data.get("price"))),
         ("Change", _format_percent(data.get("change_pct"))),
@@ -571,6 +618,28 @@ def _stock_metric_rows(data: dict) -> list[tuple[str, str]]:
         ("RSI (14D)", _safe_value(data.get("rsi_14d"))),
         ("Technical Rating", _safe_recommendation(data.get("tv_recommendation"))),
     ]
+    fundamentals = data.get("fundamentals") or {}
+    if fundamentals:
+        rows.extend([
+            ("Industry", _safe_value(fundamentals.get("industry"))),
+            ("PB Ratio", _safe_value(fundamentals.get("pb"))),
+            ("Dividend Yield", _format_ratio_percent(fundamentals.get("dividend_yield"))),
+            ("Latest Quarterly Net Profit", _format_inr_market_cap(fundamentals.get("net_profit_qtr"))),
+            ("Latest Quarterly Revenue", _format_inr_market_cap(fundamentals.get("revenue_qtr"))),
+            ("ROCE", _format_ratio_percent(fundamentals.get("roce"))),
+            ("ROE", _format_ratio_percent(fundamentals.get("roe"))),
+            ("EPS TTM", _format_price(fundamentals.get("eps_ttm"))),
+            ("EV / EBITDA", _safe_value(fundamentals.get("ev_ebitda"))),
+            ("Sales Growth (3Y)", _format_ratio_percent(fundamentals.get("sales_growth_3y"))),
+            ("Profit Growth (3Y)", _format_ratio_percent(fundamentals.get("profit_growth_3y"))),
+            ("EPS Growth (3Y)", _format_ratio_percent(fundamentals.get("eps_growth_3y"))),
+            ("Debt to Equity", _safe_value(fundamentals.get("debt_to_equity"))),
+            ("Promoter Holding", _format_ratio_percent(fundamentals.get("promoter_holding"))),
+            ("FII Holding", _format_ratio_percent(fundamentals.get("fii_holding"))),
+            ("DII Holding", _format_ratio_percent(fundamentals.get("dii_holding"))),
+            ("Data Source", _safe_value(fundamentals.get("source") or "source unavailable")),
+        ])
+    return rows
 
 def _fund_metric_rows(data: dict) -> list[tuple[str, str]]:
     period = _risk_period(data)
@@ -599,6 +668,11 @@ def _comparison_rows(comparison: dict) -> tuple[list[str], list[list[str]], list
         for name, data in comparison.items()
         if _is_unavailable_entity(data)
     ]
+    for name, data in valid_entities.items():
+        quality = data.get("data_quality") or {}
+        message = quality.get("message")
+        if message and message not in notes and quality.get("missing_fields"):
+            notes.append(f"{name}: {message}")
 
     uses_fund_metrics = any(_looks_like_fund(data) for data in valid_entities.values())
     metric_rows = _fund_metric_rows if uses_fund_metrics else _stock_metric_rows
@@ -632,11 +706,11 @@ def _comparison_rows(comparison: dict) -> tuple[list[str], list[list[str]], list
 
     return ["Metric", *entities], rows, notes
 
-def _data_table_markdown(intent: str, quant_data: Any, screener_results: list | None = None) -> tuple[str, list[str]]:
+def _data_table_markdown(intent: str, quant_data: Any, screening_results: list | None = None) -> tuple[str, list[str]]:
     notes: list[str] = []
-    if intent == "screener":
+    if intent == "screen":
         rows = []
-        for item in screener_results or []:
+        for item in screening_results or []:
             rows.append([
                 _safe_value(item.get("symbol")),
                 _safe_value(item.get("name")),
@@ -696,8 +770,8 @@ def _snapshot_line(intent: str, quant_data: Any) -> str:
         return f"Latest structured NAV is {_format_price(quant_data.get('nav'))}."
     return "Structured data is limited for this query."
 
-async def run_screener(filters: dict) -> list:
-    """Screener Engine against stock universe using Supabase"""
+async def run_stock_screen(filters: dict) -> list:
+    """Stock screening against the local stock universe."""
     if not supabase:
         logger.error("Supabase client not initialized")
         return []
@@ -733,10 +807,10 @@ async def run_screener(filters: dict) -> list:
             })
         return formatted_results
     except Exception as e:
-        logger.error(f"Screener DB error: {e}")
+        logger.error(f"Stock screening DB error: {e}")
         return []
 
-async def synthesis_response(query: str, intent_info: dict, quant_data: Any, news_data: list, screener_results: list = None) -> str:
+async def synthesis_response(query: str, intent_info: dict, quant_data: Any, news_data: list, screening_results: list = None) -> str:
     """Synthesis Core"""
     
     intent = intent_info.get("intent")
@@ -753,7 +827,7 @@ NEVER give direct financial advice to buy or sell a specific stock."""
         ]
         return await function_ollama_chat(messages, format="text")
 
-    table_markdown, data_notes = _data_table_markdown(intent, quant_data, screener_results)
+    table_markdown, data_notes = _data_table_markdown(intent, quant_data, screening_results)
     news_markdown = _news_markdown(news_data)
     subject = _summary_subject(query, intent_info, quant_data)
     snapshot = _snapshot_line(intent, quant_data)
@@ -776,8 +850,8 @@ Structured Data:
 News Data:
 {json.dumps(news_data, indent=2)}
 
-Screener Results:
-{json.dumps(screener_results, indent=2)}
+Screening Results:
+{json.dumps(screening_results, indent=2)}
 """
 
     messages = [
@@ -967,6 +1041,42 @@ def _compute_nav_risk_metrics(close_series: pd.Series, risk_free_rate: float = 0
         "maxDrawdown": round(max_drawdown, 4)
     }
 
+@app.get("/api/quant/stocks/compare")
+async def compare_stocks_quant(symbols: str = Query(..., min_length=1)):
+    try:
+        return build_stock_compare(symbols)
+    except Exception as e:
+        logger.error("Stock quant compare failed: %s", e)
+        raise HTTPException(status_code=500, detail="Stock quant comparison failed")
+
+
+@app.get("/api/quant/stocks/{symbol}/profile")
+async def stock_quant_profile(symbol: str):
+    try:
+        return build_stock_profile(symbol)
+    except Exception as e:
+        logger.error("Stock profile failed for %s: %s", symbol, e)
+        raise HTTPException(status_code=500, detail="Stock profile failed")
+
+
+@app.get("/api/quant/stocks/{symbol}/financials")
+async def stock_quant_financials(symbol: str):
+    try:
+        return get_stock_financials(symbol)
+    except Exception as e:
+        logger.error("Stock financials failed for %s: %s", symbol, e)
+        raise HTTPException(status_code=500, detail="Stock financials failed")
+
+
+@app.get("/api/quant/stocks/{symbol}/price-history")
+async def stock_quant_price_history(symbol: str, days: int = Query(365, ge=1, le=5000)):
+    try:
+        return {"symbol": symbol.upper(), "price_history": get_stock_price_history(symbol, days=days)}
+    except Exception as e:
+        logger.error("Stock price history failed for %s: %s", symbol, e)
+        raise HTTPException(status_code=500, detail="Stock price history failed")
+
+
 @app.get("/api/mf/{scheme_code}")
 async def get_mutual_fund_details(scheme_code: int):
     if not supabase:
@@ -1042,7 +1152,7 @@ async def chat_endpoint(req: ChatRequest):
     
     quant_data = {}
     news_data = []
-    screener_results = None
+    screening_results = None
 
     def _entity_search_term(entity: str) -> str:
         query_lower = req.query.lower()
@@ -1065,9 +1175,9 @@ async def chat_endpoint(req: ChatRequest):
         words = [word for word in cleaned.split() if word]
         return f"%{'%'.join(words)}%" if words else "%"
     
-    if intent == "screener":
-        filters = intent_info.get("screener_filters", {})
-        screener_results = await run_screener(filters)
+    if intent == "screen":
+        filters = intent_info.get("screen_filters", {})
+        screening_results = await run_stock_screen(filters)
         
     elif intent == "compare":
         entities = intent_info.get("compare_entities", [])
@@ -1143,7 +1253,17 @@ async def chat_endpoint(req: ChatRequest):
                     db_data.update(risk_metrics)
                     comparison_results[entity] = db_data
                 elif asset_type != "mutual_fund" and (stock_symbol or yf_ticker):
-                    comparison_results[entity] = fetch_quant_data(stock_symbol or yf_ticker, period)
+                    stock_compare = build_stock_compare([stock_symbol or yf_ticker])
+                    comparison_results[entity] = next(
+                        iter((stock_compare.get("comparison") or {}).values()),
+                        {"error": "Data not found for this entity"},
+                    )
+                elif asset_type != "mutual_fund":
+                    stock_compare = build_stock_compare([entity])
+                    comparison_results[entity] = next(
+                        iter((stock_compare.get("comparison") or {}).values()),
+                        {"error": "Data not found for this entity"},
+                    )
                 else:
                     comparison_results[entity] = {"error": "Data not found for this entity"}
                     
@@ -1202,7 +1322,7 @@ async def chat_endpoint(req: ChatRequest):
             news_items = await analyze_news_sentiment(news_items)
         news_data = news_items
             
-    final_answer = await synthesis_response(req.query, intent_info, quant_data, news_data, screener_results)
+    final_answer = await synthesis_response(req.query, intent_info, quant_data, news_data, screening_results)
     response_json = {
         "answer": final_answer,
         "debug_intent": intent_info,
