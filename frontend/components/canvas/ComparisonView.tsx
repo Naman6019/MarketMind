@@ -7,7 +7,7 @@ import FundDetailsPanel from '../funds/FundDetailsPanel';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 type MetricValue = string | number | null | undefined;
-type FundamentalMetric = Record<string, unknown>;
+type FundamentalMetric = Record<string, MetricValue>;
 type ComparisonMetric = Record<string, unknown>;
 type AuxiliaryData = {
   quant_data?: {

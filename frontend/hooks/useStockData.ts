@@ -27,9 +27,10 @@ export function useStockData(ticker: string | null) {
 
   useEffect(() => {
     if (!ticker) return;
+    const symbol = ticker;
 
-    if (cache.has(ticker)) {
-      const cached = cache.get(ticker)!;
+    if (cache.has(symbol)) {
+      const cached = cache.get(symbol)!;
       queueMicrotask(() => setData(cached));
       return;
     }
@@ -38,16 +39,16 @@ export function useStockData(ticker: string | null) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/quant/stocks/${encodeURIComponent(ticker)}/price-history?days=365`);
+        const res = await fetch(`/api/quant/stocks/${encodeURIComponent(symbol)}/price-history?days=365`);
 
         if (!res.ok) throw new Error('Failed to fetch stock data');
         const result = await res.json();
         const stockData = {
-          ticker,
+          ticker: symbol,
           history: result.price_history || [],
-          info: { name: ticker, price: 0, change: 0, changePercent: 0 },
+          info: { name: symbol, price: 0, change: 0, changePercent: 0 },
         };
-        cache.set(ticker, stockData);
+        cache.set(symbol, stockData);
         setData(stockData);
         setLoading(false);
       } catch (err) {
