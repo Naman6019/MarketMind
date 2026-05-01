@@ -31,7 +31,7 @@ export default function LandingPage() {
       </div>
 
       {/* Navigation */}
-      <nav className="mx-auto flex w-full max-w-[1680px] items-center justify-between px-4 py-5 sm:px-6 lg:px-10 xl:px-12">
+      <nav className="flex w-full items-center justify-between px-4 py-5 sm:px-6 lg:px-10 xl:px-12">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#66fcf1] to-[#45a29e] shadow-[0_0_20px_rgba(102,252,241,0.4)] flex items-center justify-center">
             <LineChart className="text-[#0b0c10] w-6 h-6" />
@@ -48,8 +48,8 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <main className="mx-auto w-full max-w-[1680px] px-4 pt-16 pb-24 sm:px-6 lg:px-10 lg:pt-20 lg:pb-32 xl:px-12">
-        <div className="grid min-w-0 grid-cols-1 items-center gap-12 xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.1fr)] xl:gap-20">
+      <main className="w-full px-4 pt-16 pb-24 sm:px-6 lg:px-10 lg:pt-20 lg:pb-32 xl:px-12">
+        <div className="grid min-w-0 grid-cols-1 items-center gap-12 xl:grid-cols-[minmax(520px,0.82fr)_minmax(640px,1.18fr)] xl:gap-20">
           <motion.div 
             initial="hidden"
             animate="visible"
@@ -93,16 +93,17 @@ export default function LandingPage() {
             initial={{ opacity: 0, scale: 0.9, rotateX: 10 }}
             animate={{ opacity: 1, scale: 1, rotateX: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="relative min-w-0 justify-self-center xl:justify-self-end"
+            className="relative w-full min-w-0 justify-self-stretch"
           >
             <div className="absolute inset-0 bg-gradient-to-tr from-[#66fcf1]/20 to-transparent rounded-2xl blur-2xl transform -rotate-3" />
-            <div className="relative rounded-2xl border border-[rgba(197,198,199,0.1)] bg-[#1f2833]/80 backdrop-blur-xl p-2 shadow-2xl overflow-hidden transform hover:scale-[1.02] transition-transform duration-500">
+            <div className="relative w-full rounded-2xl border border-[rgba(197,198,199,0.1)] bg-[#1f2833]/80 backdrop-blur-xl p-2 shadow-2xl overflow-hidden transform hover:scale-[1.02] transition-transform duration-500">
               <Image 
                 src="/hero.png" 
                 alt="MarketMind Dashboard Preview" 
                 width={800} 
                 height={600} 
-                className="h-auto w-full max-w-[900px] rounded-xl border border-[rgba(255,255,255,0.05)]"
+                sizes="(min-width: 1280px) 58vw, 100vw"
+                className="h-auto w-full max-w-none rounded-xl border border-[rgba(255,255,255,0.05)]"
                 priority
               />
             </div>
@@ -112,7 +113,7 @@ export default function LandingPage() {
 
       {/* Features Section */}
       <section id="features" className="relative overflow-hidden border-y border-[rgba(197,198,199,0.05)] bg-[rgba(11,12,16,0.8)] py-24 lg:py-32">
-        <div className="mx-auto w-full max-w-[1680px] px-4 sm:px-6 lg:px-10 xl:px-12">
+        <div className="w-full px-4 sm:px-6 lg:px-10 xl:px-12">
           <div className="text-center mb-20">
             <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">Built for the Modern Investor</h2>
             <p className="text-[#8a9199] text-lg max-w-2xl mx-auto">Everything you need to analyze, compare, and understand the markets without the noise.</p>

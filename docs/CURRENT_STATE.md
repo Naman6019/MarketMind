@@ -42,7 +42,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - YFinance rate limits often on Render.
 - Portfolio overlap is partial because AMFI holdings often returns `Nil`.
 - News uses Google News RSS and can be slow.
-- Landing page wide-screen overflow has been clipped and the hero/features shell now uses a wider responsive container.
+- Landing page wide-screen layout now uses full-width hero/features sections, and the hero preview fills the right side instead of stopping at a fixed card width.
 
 ## Stock Data Architecture
 - Source-neutral tables are defined in `backend/migrations/20260501_source_neutral_stock_data.sql`.

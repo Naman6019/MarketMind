@@ -28,7 +28,7 @@
 - [x] GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 - [x] Fixed mobile dashboard clipping by using a single active chat/comparison workspace and compact comparison chart spacing.
 - [x] Fixed mobile chat positioning so the header stays visible and the input stays at the bottom.
-- [x] Fixed landing page wide-screen right-side void by clipping horizontal overflow and widening the responsive shell.
+- [x] Fixed landing page wide-screen right-side void by removing fixed hero width caps and using full-width sections.
 
 ## Blocked
 - None currently.
@@ -37,4 +37,4 @@
 - YFinance rate limits often on Render deployments.
 - [ ] Portfolio overlap is partial because AMFI holdings API often returns `Nil`.
 - News uses Google News RSS and can be slow.
-- Landing page wide-screen overflow was fixed by clipping horizontal overflow and using a wider responsive shell.
+- Landing page wide-screen void was fixed by removing fixed hero width caps and using full-width sections.
