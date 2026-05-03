@@ -32,6 +32,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Mobile dashboard layout keeps chat mounted behind comparison overlays, and chat state lives in a shared store so query/messages survive canvas-to-chat switches.
 - `IndianAPIProvider` is fully implemented for stock universe, EOD prices, corporate actions, and MF data (AUM, NAV, returns). Financial statement methods are stubs pending expansion.
 - `FinEdgeProvider` supports stock universe, corporate actions, and partial annual P&L fundamentals using `FINEDGE_API_KEY`.
+- `sync_corporate_events.py` is FinEdge-only and does not use IndianAPI fallback, avoiding IndianAPI 403 failures for stock corporate actions.
 - Stock EOD and historical price backfill use NSE CM-UDiFF bhavcopy zip files and write `stock_prices_daily` with source `nse_bhavcopy`.
 - IndianAPI EOD price history follows the documented `/historical_data?symbol=...&period=1yr&filter=price` request shape.
 - `sync_mf_from_indianapi.py` job syncs MF AUM and returns from IndianAPI into the `mutual_funds` Supabase table, running as part of the `mf-sync.yml` workflow.

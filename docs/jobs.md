@@ -25,7 +25,8 @@ GitHub Actions runs stock and MF jobs from `.github/workflows/`. Jobs are Python
 - NSE universe sync writes `stocks`.
 - Daily and historical EOD price jobs download NSE CM-UDiFF bhavcopy zip files and write `stock_prices_daily` with source `nse_bhavcopy`.
 - EOD price jobs count an empty provider response as a failed symbol, not a successful insert.
-- Stock universe, fundamentals, and corporate event workflows select FinEdge with `STOCK_DATA_PROVIDER=finedge`.
+- Stock universe and fundamentals workflows select FinEdge with `STOCK_DATA_PROVIDER=finedge`.
+- Corporate event sync is FinEdge-only in code and requires `FINEDGE_API_KEY`; it must not fall back to IndianAPI.
 - Stock price workflows select NSE with `STOCK_DATA_PROVIDER=nse`.
 - YFinance is used only when NSE bhavcopy returns empty or local price history is unavailable.
 - Fundamentals sync is skipped when no external provider is configured.

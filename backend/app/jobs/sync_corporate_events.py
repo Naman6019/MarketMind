@@ -10,17 +10,23 @@ if BASE_DIR not in sys.path:
 from dotenv import load_dotenv
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-from app.providers import get_fundamentals_provider
+from app.providers.finedge_provider import FinEdgeProvider
 from app.repositories.stock_repository import StockRepository
 from app.models.stock_models import ProviderRun, DataQualityIssue, CorporateEvent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def get_corporate_events_provider():
+    provider = FinEdgeProvider()
+    if provider.is_available():
+        return provider
+    logger.error("FINEDGE_API_KEY not set. Corporate events sync requires FinEdge.")
+    return None
+
 def main():
-    provider = get_fundamentals_provider()
-    if not provider.is_available():
-        logger.warning(f"Provider {provider.name} is not available. Exiting.")
+    provider = get_corporate_events_provider()
+    if not provider:
         return
 
     repo = StockRepository()

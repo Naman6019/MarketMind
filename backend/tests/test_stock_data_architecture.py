@@ -154,6 +154,28 @@ def test_chat_stock_compare_item_uses_quant_service_shape(monkeypatch):
     assert item["risk_period"] == "3Y"
 
 
+def test_corporate_events_job_uses_finedge_even_if_stock_provider_is_indianapi(monkeypatch):
+    from app.jobs import sync_corporate_events
+
+    monkeypatch.setenv("STOCK_DATA_PROVIDER", "indianapi")
+    monkeypatch.setenv("INDIANAPI_KEY", "bad-key")
+    monkeypatch.setenv("FINEDGE_API_KEY", "good-key")
+
+    provider = sync_corporate_events.get_corporate_events_provider()
+
+    assert provider.name == "finedge"
+
+
+def test_corporate_events_job_requires_finedge_key(monkeypatch):
+    from app.jobs import sync_corporate_events
+
+    monkeypatch.setenv("STOCK_DATA_PROVIDER", "indianapi")
+    monkeypatch.setenv("INDIANAPI_KEY", "bad-key")
+    monkeypatch.delenv("FINEDGE_API_KEY", raising=False)
+
+    assert sync_corporate_events.get_corporate_events_provider() is None
+
+
 def test_stock_price_upsert_payload_format():
     payload = build_stock_price_upsert_payload("reliance", {
         "date": "2026-05-01",
