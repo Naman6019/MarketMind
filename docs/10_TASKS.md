@@ -9,6 +9,7 @@
 - [ ] Testing `NIFTY500` vs `NIFTYTOTALMARKET`.
 - [ ] Tuning `STOCK_INFO_ENRICH_LIMIT` and `STOCK_YFINANCE_FALLBACK_LIMIT`.
 - [ ] Building a premium Landing Page at `/` and moving app to `/dashboard`.
+- [ ] Fill mutual fund missing data gaps after stock historical backfill.
 
 ## Done
 - [x] AI chat with asset mode toggle: `Auto`, `Stocks`, `Mutual Funds`.
@@ -31,6 +32,7 @@
 - [x] Fixed mobile comparison canvas state loss by keeping chat mounted behind the canvas overlay and moving chat state into a shared store.
 - [x] Fixed landing page wide-screen right-side void by removing fixed hero width caps and using full-width sections.
 - [x] Added internal stock DTOs and a Supabase repository layer for source-neutral stock data.
+- [x] Added NSE CM-UDiFF bhavcopy daily price sync and manual historical backfill into `stock_prices_daily`.
 
 ## Blocked
 - None currently.

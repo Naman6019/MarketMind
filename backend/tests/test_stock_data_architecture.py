@@ -1,4 +1,5 @@
 import pytest
+from io import StringIO
 
 from app.providers import get_fundamentals_provider
 from app.services.ratio_engine import calculate_ratio_snapshot
@@ -241,3 +242,26 @@ def test_data_quality_issue_allows_legacy_keyword_shape():
 
     assert issue.field_name is None
     assert issue.metadata is None
+
+
+def test_nse_udiff_bhavcopy_parser_maps_stock_prices():
+    from app.nse_client import parse_nse_bhavcopy_csv
+
+    csv_data = StringIO(
+        "TradDt,BizDt,Sgmt,Src,FinInstrmTp,ISIN,TckrSymb,SctySrs,FinInstrmNm,"
+        "OpnPric,HghPric,LwPric,ClsPric,PrvsClsgPric,TtlTradgVol,TtlTrfVal\n"
+        "2024-07-12,2024-07-12,CM,NSE,STK,INE002A01018,RELIANCE,EQ,Reliance,"
+        "3000.00,3010.00,2990.00,3005.00,2995.00,1000,3005000.00\n"
+        "2024-07-12,2024-07-12,CM,NSE,ETF,INF000000000,ETFTEST,EQ,ETF,"
+        "10.00,11.00,9.00,10.50,10.00,100,1050.00\n"
+    )
+
+    rows = parse_nse_bhavcopy_csv(csv_data)
+
+    assert len(rows) == 1
+    assert rows[0]["symbol"] == "RELIANCE"
+    assert rows[0]["date"] == "2024-07-12"
+    assert rows[0]["close"] == 3005.0
+    assert rows[0]["volume"] == 1000
+    assert rows[0]["value_traded"] == 3005000.0
+    assert rows[0]["source"] == "nse_bhavcopy"

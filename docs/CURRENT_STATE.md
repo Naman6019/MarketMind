@@ -30,7 +30,8 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 - Mobile dashboard layout keeps chat mounted behind comparison overlays, and chat state lives in a shared store so query/messages survive canvas-to-chat switches.
 - `IndianAPIProvider` is fully implemented for stock universe, EOD prices, corporate actions, and MF data (AUM, NAV, returns). Financial statement methods are stubs pending expansion.
-- `FinEdgeProvider` supports stock universe, EOD prices, corporate actions, and partial annual P&L fundamentals using `FINEDGE_API_KEY`.
+- `FinEdgeProvider` supports stock universe, corporate actions, and partial annual P&L fundamentals using `FINEDGE_API_KEY`.
+- Stock EOD and historical price backfill use NSE CM-UDiFF bhavcopy zip files and write `stock_prices_daily` with source `nse_bhavcopy`.
 - IndianAPI EOD price history follows the documented `/historical_data?symbol=...&period=1yr&filter=price` request shape.
 - `sync_mf_from_indianapi.py` job syncs MF AUM and returns from IndianAPI into the `mutual_funds` Supabase table, running as part of the `mf-sync.yml` workflow.
 
@@ -39,6 +40,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Testing `NIFTY500` vs `NIFTYTOTALMARKET`.
 - Tuning `STOCK_INFO_ENRICH_LIMIT` and `STOCK_YFINANCE_FALLBACK_LIMIT`.
 - **Premium Landing Page (`/`) with Framer Motion animations and Dashboard moved to (`/dashboard`)**.
+- Mutual fund missing data cleanup after stock historical backfill.
 
 ## Known Gaps
 - IndianAPI financial statement endpoints (`get_quarterly_results`, `get_balance_sheet`, etc.) are stubs; `STOCK_DATA_PROVIDER=manual` remains the active local fallback path.
@@ -54,4 +56,5 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Supabase stock repository access lives in `backend/app/repositories/stock_repository.py`.
 - Provider adapters live in `backend/app/providers/`.
 - Ratio calculation lives in `backend/app/services/ratio_engine.py`.
-- GitHub Actions runs 7 workflows: stock universe, EOD prices, fundamentals + ratios (weekly), corporate events, legacy EOD fetch, MF sync, and keepalive. See `docs/jobs.md` for the full schedule.
+- Provider sync issue logging uses optional `data_quality_issues`; apply `backend/migrations/20260503_add_data_quality_issues.sql` if the table is missing.
+- GitHub Actions runs 8 workflows: stock universe, daily EOD prices, historical price backfill, fundamentals + ratios (weekly), corporate events, legacy EOD fetch, MF sync, and keepalive. See `docs/jobs.md` for the full schedule.

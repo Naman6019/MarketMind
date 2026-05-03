@@ -2,7 +2,7 @@ name: Sync Prices Daily
 
 on:
   schedule:
-    - cron: '30 10 * * 1-5'
+    - cron: '30 12 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -24,12 +24,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          STOCK_DATA_PROVIDER: finedge
-          FINEDGE_API_KEY: ${{ secrets.FINEDGE_API_KEY }}
+          STOCK_DATA_PROVIDER: nse
           STOCK_PRICE_HISTORY_LIMIT: "500"
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ] || [ -z "$FINEDGE_API_KEY" ]; then
-            echo "Error: Missing SUPABASE_URL, SUPABASE_KEY, or FINEDGE_API_KEY"
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "Error: Missing SUPABASE_URL or SUPABASE_KEY"
             exit 1
           fi
           python -m backend.app.jobs.sync_latest_prices

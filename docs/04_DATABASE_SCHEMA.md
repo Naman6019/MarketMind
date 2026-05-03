@@ -13,6 +13,7 @@ MarketMind uses Supabase (PostgreSQL) as its primary data store.
 - `shareholding_pattern`: Promoter, FII, DII, public holding rows.
 - `corporate_events`: Corporate action/event rows.
 - `data_provider_runs`: Provider job run audit log.
+- `data_quality_issues`: Optional provider sync issue log.
 - `mutual_funds`: Metadata for mutual funds (scheme codes, names, categories, TER, AUM).
 - `mutual_fund_history`: Historical NAV data used for MF charting, returns, Alpha, and Beta computations.
 

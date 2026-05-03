@@ -4,6 +4,7 @@ Run:
 
 ```bash
 psql "$DATABASE_URL" -f backend/migrations/20260501_source_neutral_stock_data.sql
+psql "$DATABASE_URL" -f backend/migrations/20260503_add_data_quality_issues.sql
 ```
 
 ## Source-Neutral Stock Tables
@@ -14,6 +15,7 @@ psql "$DATABASE_URL" -f backend/migrations/20260501_source_neutral_stock_data.sq
 - `shareholding_pattern`
 - `corporate_events`
 - `data_provider_runs`
+- `data_quality_issues`
 
 All financial values use `numeric` columns. Unique constraints prevent duplicate symbol/date/source rows.
 

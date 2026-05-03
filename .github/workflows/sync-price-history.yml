@@ -1,0 +1,60 @@
+name: Sync Price History
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Number of calendar days to backfill
+        required: false
+        default: "365"
+      start_date:
+        description: Start date in YYYY-MM-DD format
+        required: false
+      end_date:
+        description: End date in YYYY-MM-DD format
+        required: false
+      symbols:
+        description: Optional comma-separated symbols
+        required: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run Backfill
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          STOCK_DATA_PROVIDER: nse
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "Error: Missing SUPABASE_URL or SUPABASE_KEY"
+            exit 1
+          fi
+
+          args=()
+          if [ -n "${{ inputs.days }}" ]; then
+            args+=(--days "${{ inputs.days }}")
+          fi
+          if [ -n "${{ inputs.start_date }}" ]; then
+            args+=(--start-date "${{ inputs.start_date }}")
+          fi
+          if [ -n "${{ inputs.end_date }}" ]; then
+            args+=(--end-date "${{ inputs.end_date }}")
+          fi
+          if [ -n "${{ inputs.symbols }}" ]; then
+            args+=(--symbols "${{ inputs.symbols }}")
+          fi
+
+          python -m backend.app.jobs.sync_price_history "${args[@]}"

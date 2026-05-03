@@ -15,3 +15,6 @@ class NSEProvider(FundamentalsProvider):
 
     def get_daily_prices(self, trade_date: date):
         return fetch_nse_bhavcopy(trade_date)
+
+    def get_eod_prices_for_date(self, trade_date: date):
+        return fetch_nse_bhavcopy(trade_date)

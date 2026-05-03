@@ -7,7 +7,8 @@ GitHub Actions runs stock and MF jobs from `.github/workflows/`. Jobs are Python
 | Workflow file | Schedule (UTC) | Job module invoked |
 |---|---|---|
 | `sync-stock-universe.yml` | Daily `0 1 * * *` | `python -m backend.app.jobs.sync_stock_universe` |
-| `sync-prices-daily.yml` | Weekdays `30 10 * * 1-5` | `python -m backend.app.jobs.sync_latest_prices` |
+| `sync-prices-daily.yml` | Weekdays `30 12 * * 1-5` | `python -m backend.app.jobs.sync_latest_prices` |
+| `sync-price-history.yml` | Manual only | `python -m backend.app.jobs.sync_price_history` |
 | `sync-fundamentals-weekly.yml` | Saturdays `0 2 * * 6` | `python -m backend.app.jobs.sync_fundamentals` + `calculate_ratios` |
 | `sync-corporate-events.yml` | Daily `0 3 * * *` | `python -m backend.app.jobs.sync_corporate_events` |
 | `fetch_stocks.yml` | Daily `0 11 * * *` | `python backend/scripts/run_fetch.py` (legacy EOD fetch) |
@@ -22,13 +23,15 @@ GitHub Actions runs stock and MF jobs from `.github/workflows/`. Jobs are Python
 ## Behavior
 - Jobs use upserts and are safe to rerun.
 - NSE universe sync writes `stocks`.
-- EOD price jobs write `stock_prices_daily`.
+- Daily and historical EOD price jobs download NSE CM-UDiFF bhavcopy zip files and write `stock_prices_daily` with source `nse_bhavcopy`.
 - EOD price jobs count an empty provider response as a failed symbol, not a successful insert.
-- Stock universe, EOD price, fundamentals, and corporate event workflows select FinEdge with `STOCK_DATA_PROVIDER=finedge`.
+- Stock universe, fundamentals, and corporate event workflows select FinEdge with `STOCK_DATA_PROVIDER=finedge`.
+- Stock price workflows select NSE with `STOCK_DATA_PROVIDER=nse`.
 - YFinance is used only when NSE bhavcopy returns empty or local price history is unavailable.
 - Fundamentals sync is skipped when no external provider is configured.
 - Ratio calculation writes `ratios_snapshot` only when enough statement data exists.
 - Every provider job writes `data_provider_runs` where possible.
 - Deprecated CSV scripts under `backend/scripts/deprecated/` are not scheduled.
-- Stock job secrets are stored as GitHub Repository Secrets: `SUPABASE_URL`, `SUPABASE_KEY`, `FINEDGE_API_KEY`.
+- Stock universe/fundamental/corporate action job secrets are stored as GitHub Repository Secrets: `SUPABASE_URL`, `SUPABASE_KEY`, `FINEDGE_API_KEY`.
+- Stock price jobs only need `SUPABASE_URL` and `SUPABASE_KEY`.
 - MF sync still uses `INDIAN_API_KEY` for IndianAPI mutual fund data.

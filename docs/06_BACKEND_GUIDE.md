@@ -24,7 +24,7 @@ backend/
 │   │   ├── yfinance_provider.py   # YFinance fallback adapter
 │   │   ├── manual_provider.py     # Reads from Supabase source-neutral tables
 │   │   ├── nse_provider.py        # NSE bhavcopy adapter
-│   │   └── finedge_provider.py    # FinEdge adapter (stock universe, EOD, corp actions, partial P&L)
+│   │   └── finedge_provider.py    # FinEdge adapter (stock universe, corp actions, partial P&L)
 │   ├── repositories/
 │   │   └── stock_repository.py    # All CRUD for source-neutral stock tables
 │   ├── services/
@@ -33,7 +33,7 @@ backend/
 │   └── jobs/                # Scheduled job modules (run by GitHub Actions)
 │       ├── sync_stock_universe.py   # Writes stock metadata to `stocks`
 │       ├── sync_latest_prices.py    # Writes EOD prices to `stock_prices_daily`
-│       ├── sync_price_history.py    # Backfills historical price data
+│       ├── sync_price_history.py    # Backfills historical NSE bhavcopy price data
 │       ├── sync_fundamentals.py     # Fetches financial statements from active provider
 │       ├── calculate_ratios.py      # Computes and writes `ratios_snapshot`
 │       ├── sync_corporate_events.py # Fetches dividends, splits, bonuses

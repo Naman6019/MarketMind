@@ -16,4 +16,5 @@ MarketMind stock data is source-neutral. App code reads normalized tables and do
 - Providers must write their `source`.
 - Paid provider adapters must be disabled unless API keys exist.
 - Scheduled jobs run in GitHub Actions, not Vercel cron.
+- Stock EOD history is populated from NSE CM-UDiFF bhavcopy zip files with source `nse_bhavcopy`.
 - Mutual fund tables and jobs remain separate.

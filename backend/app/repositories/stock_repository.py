@@ -25,6 +25,7 @@ T = TypeVar("T")
 class StockRepository:
     def __init__(self, client: Any | None = None) -> None:
         self.supabase = client or default_supabase
+        self._data_quality_issues_available = True
 
     def upsert_stocks(self, profiles: list[StockProfile]) -> None:
         rows = [self._with_updated_at(self._to_row(profile)) for profile in profiles]
@@ -78,11 +79,15 @@ class StockRepository:
             logger.warning("Provider run update failed for %s: %s", run_id, exc)
 
     def log_data_quality_issue(self, issue: DataQualityIssue) -> None:
-        if not self._has_client():
+        if not self._has_client() or not self._data_quality_issues_available:
             return
         try:
             self.supabase.table("data_quality_issues").insert(self._to_row(issue)).execute()
         except Exception as exc:
+            if _is_missing_table_error(exc, "data_quality_issues"):
+                self._data_quality_issues_available = False
+                logger.warning("Skipping data quality issue logging because data_quality_issues table is missing.")
+                return
             logger.warning("Data quality issue insert failed for %s: %s", issue.symbol, exc)
 
     def get_stock_profile(self, symbol: str) -> StockProfile | None:
@@ -366,3 +371,8 @@ class StockRepository:
             if item is not None:
                 mapped.append(item)
         return mapped
+
+
+def _is_missing_table_error(exc: Exception, table_name: str) -> bool:
+    text = str(exc)
+    return table_name in text and ("PGRST205" in text or "Could not find the table" in text)

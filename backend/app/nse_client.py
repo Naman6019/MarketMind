@@ -13,11 +13,23 @@ import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
+
+NSE_ARCHIVE_BASE_URL = "https://nsearchives.nseindia.com/content/cm"
+NSE_HEADERS = {
+    "User-Agent": "MarketMind/1.0 (Language=python)",
+    "Accept-Language": "*",
+}
+
+
 def fetch_nse_bhavcopy(trade_date: date) -> list:
     """
-    Downloads NSE bhavcopy CSV for trade_date using jugaad-data.
-    Filters to EQ series and maps to Supabase schema.
+    Downloads NSE CM-UDiFF bhavcopy for trade_date and maps it to stock_prices_daily.
     """
+    direct_rows = fetch_nse_udiff_bhavcopy(trade_date)
+    if direct_rows:
+        return direct_rows
+
+    # Fallback for older dates / transient archive failures.
     temp_dir = "/tmp/nse_bhavcopy"
     os.makedirs(temp_dir, exist_ok=True)
     
@@ -50,8 +62,13 @@ def fetch_nse_bhavcopy(trade_date: date) -> list:
                 "high": row['HIGH'],
                 "low": row['LOW'],
                 "close": row['CLOSE'],
+                "adj_close": row['CLOSE'],
                 "volume": row['TOTTRDQTY'],
-                "date": row['TIMESTAMP'],
+                "value_traded": _safe_number(row.get("TOTTRDVAL")),
+                "delivery_qty": None,
+                "delivery_percent": None,
+                "date": _normalize_date_string(row['TIMESTAMP']),
+                "source": "nse_bhavcopy",
                 # For compatibility with existing schema:
                 "current_price": row['CLOSE'],
                 "change_pct": round(float(change_pct), 2) if change_pct is not None else None
@@ -65,6 +82,136 @@ def fetch_nse_bhavcopy(trade_date: date) -> list:
     except Exception as e:
         logger.warning(f"NSE Bhavcopy unavailable for {trade_date}: {e}")
         return []
+
+
+def fetch_nse_udiff_bhavcopy(trade_date: date) -> list[dict]:
+    """
+    Downloads NSE CM-UDiFF Common Bhavcopy Final zip directly from NSE archives.
+    """
+    date_key = trade_date.strftime("%Y%m%d")
+    filename = f"BhavCopy_NSE_CM_0_0_0_{date_key}_F_0000.csv.zip"
+    url = f"{NSE_ARCHIVE_BASE_URL}/{filename}"
+
+    try:
+        response = requests.get(url, headers=NSE_HEADERS, timeout=30)
+        response.raise_for_status()
+
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            csv_name = next((name for name in archive.namelist() if name.lower().endswith(".csv")), None)
+            if not csv_name:
+                logger.warning("NSE UDiFF bhavcopy zip has no CSV for %s", trade_date)
+                return []
+            with archive.open(csv_name) as csv_file:
+                return parse_nse_bhavcopy_csv(csv_file)
+    except Exception as exc:
+        logger.warning("NSE UDiFF bhavcopy unavailable for %s: %s", trade_date, exc)
+        return []
+
+
+def parse_nse_bhavcopy_csv(csv_file) -> list[dict]:
+    df = pd.read_csv(csv_file)
+    if {"TckrSymb", "OpnPric", "HghPric", "LwPric", "ClsPric", "TradDt"}.issubset(df.columns):
+        return _parse_udiff_bhavcopy_df(df)
+    return _parse_legacy_bhavcopy_df(df)
+
+
+def _parse_udiff_bhavcopy_df(df: pd.DataFrame) -> list[dict]:
+    if "Sgmt" in df.columns:
+        df = df[df["Sgmt"] == "CM"]
+    if "Src" in df.columns:
+        df = df[df["Src"] == "NSE"]
+    if "FinInstrmTp" in df.columns:
+        df = df[df["FinInstrmTp"] == "STK"]
+    if "SctySrs" in df.columns:
+        df = df[df["SctySrs"].isin(["EQ", "BE"])]
+
+    results = []
+    for _, row in df.iterrows():
+        symbol = str(row.get("TckrSymb", "")).strip().upper()
+        if not symbol:
+            continue
+        close = _safe_number(row.get("ClsPric"))
+        prev_close = _safe_number(row.get("PrvsClsgPric"))
+        change_pct = None
+        if close is not None and prev_close not in (None, 0):
+            change_pct = ((close - prev_close) / prev_close) * 100
+
+        results.append({
+            "symbol": symbol,
+            "date": str(row.get("TradDt"))[:10],
+            "open": _safe_number(row.get("OpnPric")),
+            "high": _safe_number(row.get("HghPric")),
+            "low": _safe_number(row.get("LwPric")),
+            "close": close,
+            "adj_close": close,
+            "volume": _safe_int(row.get("TtlTradgVol")),
+            "value_traded": _safe_number(row.get("TtlTrfVal")),
+            "delivery_qty": None,
+            "delivery_percent": None,
+            "source": "nse_bhavcopy",
+            "current_price": close,
+            "change_pct": round(float(change_pct), 2) if change_pct is not None else None,
+        })
+    return results
+
+
+def _parse_legacy_bhavcopy_df(df: pd.DataFrame) -> list[dict]:
+    if "SERIES" in df.columns:
+        df = df[df["SERIES"] == "EQ"]
+
+    results = []
+    for _, row in df.iterrows():
+        close = _safe_number(row.get("CLOSE"))
+        prev_close = _safe_number(row.get("PREVCLOSE"))
+        change_pct = None
+        if close is not None and prev_close not in (None, 0):
+            change_pct = ((close - prev_close) / prev_close) * 100
+
+        results.append({
+            "symbol": str(row.get("SYMBOL", "")).strip().upper(),
+            "open": _safe_number(row.get("OPEN")),
+            "high": _safe_number(row.get("HIGH")),
+            "low": _safe_number(row.get("LOW")),
+            "close": close,
+            "adj_close": close,
+            "volume": _safe_int(row.get("TOTTRDQTY")),
+            "value_traded": _safe_number(row.get("TOTTRDVAL")),
+            "delivery_qty": None,
+            "delivery_percent": None,
+            "date": _normalize_date_string(row.get("TIMESTAMP")),
+            "source": "nse_bhavcopy",
+            "current_price": close,
+            "change_pct": round(float(change_pct), 2) if change_pct is not None else None,
+        })
+    return [row for row in results if row["symbol"]]
+
+
+def _safe_number(value):
+    if pd.isna(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(value):
+    if pd.isna(value):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_date_string(value):
+    if pd.isna(value):
+        return None
+    try:
+        return pd.to_datetime(value).date().isoformat()
+    except Exception:
+        return str(value)[:10]
+
 
 def fetch_bse_bhavcopy(trade_date: date) -> list:
     """
