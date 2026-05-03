@@ -3,7 +3,7 @@
 Provider selection is controlled by environment variables.
 
 ```env
-FUNDAMENTALS_PROVIDER=manual
+STOCK_DATA_PROVIDER=manual
 FINEDGE_API_KEY=
 INDIANAPI_KEY=
 GLOBALDATAFEEDS_API_KEY=
@@ -15,9 +15,11 @@ STOCK_YFINANCE_FALLBACK_LIMIT=150
 - `manual`: reads local Supabase source-neutral tables.
 - `nse`: stock universe and EOD price data.
 - `yfinance`: fallback for price/history only, not a primary fundamentals provider.
-- `finedge`: adapter stub, disabled without `FINEDGE_API_KEY`.
+- `finedge`: active stock provider (`FINEDGE_API_KEY` required). Implemented: stock universe, EOD price history, corporate actions, and partial annual P&L fundamentals.
 - `indianapi`: active provider (`INDIANAPI_KEY` required). Implemented: stock universe, EOD price history, corporate actions, MF list + details. Financial statement methods (`get_quarterly_results`, `get_balance_sheet`, etc.) are **stubs** pending `/historical_stats` expansion.
 
+FinEdge authenticates with `token=<apiKey>` in the URL query string.
+FinEdge EOD history uses `/api/v1/daily-quotes/{symbol}`.
 IndianAPI EOD history uses `/historical_data` with `symbol`, `period`, and `filter` query params.
 
 If a selected paid provider is unavailable, backend code logs a warning and falls back to `manual`.

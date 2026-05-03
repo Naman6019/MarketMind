@@ -22,10 +22,10 @@ MarketMind utilizes a split deployment architecture due to the differing runtime
 |---|---|---|
 | `fetch_stocks.yml` | Daily `0 11 * * *` | Runs `scripts/run_fetch.py` for legacy EOD stock fetch |
 | `mf-sync.yml` | Weekdays `30 13 * * 1-5` | AMFI NAV → NAV history → MF metadata (TER/AUM) → IndianAPI MF AUM/returns |
-| `sync-stock-universe.yml` | Daily `0 1 * * *` | Syncs all NSE/BSE stock metadata via IndianAPI |
-| `sync-prices-daily.yml` | Weekdays `30 10 * * 1-5` | Syncs latest EOD prices via IndianAPI |
+| `sync-stock-universe.yml` | Daily `0 1 * * *` | Syncs all NSE/BSE stock metadata via FinEdge |
+| `sync-prices-daily.yml` | Weekdays `30 10 * * 1-5` | Syncs latest EOD prices via FinEdge |
 | `sync-fundamentals-weekly.yml` | Saturdays `0 2 * * 6` | Fetches financial statements + recalculates ratios |
-| `sync-corporate-events.yml` | Daily `0 3 * * *` | Fetches dividends, splits, bonuses via IndianAPI |
+| `sync-corporate-events.yml` | Daily `0 3 * * *` | Fetches dividends, splits, bonuses via FinEdge |
 | `keepalive.yml` | Scheduled | Pings Render to prevent free-tier spin-down |
 
-- **Secrets**: Handled via GitHub Repository Secrets (`SUPABASE_URL`, `SUPABASE_KEY`, `INDIAN_API_KEY`).
+- **Secrets**: Stock jobs use GitHub Repository Secrets (`SUPABASE_URL`, `SUPABASE_KEY`, `FINEDGE_API_KEY`). MF sync still uses `INDIAN_API_KEY`.

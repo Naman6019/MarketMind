@@ -262,12 +262,12 @@ class ProviderRun:
 @dataclass
 class DataQualityIssue:
     symbol: str
-    table_name: str | None
-    field_name: str | None
     issue_type: str
     issue_message: str
-    source: str | None
-    metadata: dict | None
+    table_name: str | None = None
+    field_name: str | None = None
+    source: str | None = None
+    metadata: dict | None = None
 
     def __post_init__(self) -> None:
         self.symbol = _normalize_symbol(self.symbol)

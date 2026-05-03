@@ -30,6 +30,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 - Mobile dashboard layout keeps chat mounted behind comparison overlays, and chat state lives in a shared store so query/messages survive canvas-to-chat switches.
 - `IndianAPIProvider` is fully implemented for stock universe, EOD prices, corporate actions, and MF data (AUM, NAV, returns). Financial statement methods are stubs pending expansion.
+- `FinEdgeProvider` supports stock universe, EOD prices, corporate actions, and partial annual P&L fundamentals using `FINEDGE_API_KEY`.
 - IndianAPI EOD price history follows the documented `/historical_data?symbol=...&period=1yr&filter=price` request shape.
 - `sync_mf_from_indianapi.py` job syncs MF AUM and returns from IndianAPI into the `mutual_funds` Supabase table, running as part of the `mf-sync.yml` workflow.
 
@@ -40,7 +41,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - **Premium Landing Page (`/`) with Framer Motion animations and Dashboard moved to (`/dashboard`)**.
 
 ## Known Gaps
-- IndianAPI financial statement endpoints (`get_quarterly_results`, `get_balance_sheet`, etc.) are stubs; `FUNDAMENTALS_PROVIDER=manual` remains the active path.
+- IndianAPI financial statement endpoints (`get_quarterly_results`, `get_balance_sheet`, etc.) are stubs; `STOCK_DATA_PROVIDER=manual` remains the active local fallback path.
 - Frontend proxy route rate limiting still pending.
 - YFinance rate limits often on Render.
 - Portfolio overlap is partial because AMFI holdings often returns `Nil`.

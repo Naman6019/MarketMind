@@ -24,7 +24,7 @@ backend/
 │   │   ├── yfinance_provider.py   # YFinance fallback adapter
 │   │   ├── manual_provider.py     # Reads from Supabase source-neutral tables
 │   │   ├── nse_provider.py        # NSE bhavcopy adapter
-│   │   └── finedge_provider.py    # FinEdge stub (disabled without FINEDGE_API_KEY)
+│   │   └── finedge_provider.py    # FinEdge adapter (stock universe, EOD, corp actions, partial P&L)
 │   ├── repositories/
 │   │   └── stock_repository.py    # All CRUD for source-neutral stock tables
 │   ├── services/

@@ -15,7 +15,7 @@ def test_symbol_resolver_uses_universe(monkeypatch):
 
 
 def test_provider_falls_back_when_paid_key_missing(monkeypatch):
-    monkeypatch.setenv("FUNDAMENTALS_PROVIDER", "finedge")
+    monkeypatch.setenv("STOCK_DATA_PROVIDER", "finedge")
     monkeypatch.delenv("FINEDGE_API_KEY", raising=False)
 
     assert get_fundamentals_provider().name == "manual"
@@ -159,3 +159,85 @@ def test_indianapi_eod_prices_use_documented_symbol_param(monkeypatch):
     assert captured["params"]["symbol"] == "TATAMOTORS"
     assert "stock_name" not in captured["params"]
     assert captured["headers"]["X-API-Key"] == "test-key"
+
+
+def test_finedge_eod_prices_use_token_query(monkeypatch):
+    from app.providers import finedge_provider
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "symbol": "ITC",
+                "price": [{
+                    "quote_date": "2026-05-01",
+                    "open_price": 1,
+                    "high_price": 2,
+                    "low_price": 0.5,
+                    "close_price": 1.5,
+                    "volume": 1000,
+                }],
+            }
+
+    def fake_get(url, params=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        return FakeResponse()
+
+    monkeypatch.setenv("FINEDGE_API_KEY", "test-key")
+    monkeypatch.setattr(finedge_provider.httpx, "get", fake_get)
+
+    provider = finedge_provider.FinEdgeProvider()
+    prices = provider.get_eod_prices("ITC")
+
+    assert captured["url"].endswith("/api/v1/daily-quotes/ITC")
+    assert captured["params"]["token"] == "test-key"
+    assert prices[0]["close"] == 1.5
+    assert prices[0]["source"] == "finedge"
+
+
+def test_finedge_annual_results_map_basic_financials(monkeypatch):
+    from app.providers import finedge_provider
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "symbol": "ITC",
+                "basic_financials": [{
+                    "year": 2025,
+                    "operatingRevenue": 100,
+                    "operatingProfit": 20,
+                    "ebitda": 25,
+                    "ebit": 18,
+                }],
+            }
+
+    monkeypatch.setenv("FINEDGE_API_KEY", "test-key")
+    monkeypatch.setattr(finedge_provider.httpx, "get", lambda *args, **kwargs: FakeResponse())
+
+    result = finedge_provider.FinEdgeProvider().get_annual_results("ITC")
+
+    assert result[0]["period_type"] == "annual"
+    assert result[0]["period_end_date"].isoformat() == "2025-03-31"
+    assert result[0]["revenue"] == 100
+    assert result[0]["source"] == "finedge"
+
+
+def test_data_quality_issue_allows_legacy_keyword_shape():
+    from app.models.stock_models import DataQualityIssue
+
+    issue = DataQualityIssue(
+        symbol="ITC",
+        table_name="stock_prices_daily",
+        issue_type="sync_error",
+        issue_message="No price history returned by provider",
+        source="finedge",
+    )
+
+    assert issue.field_name is None
+    assert issue.metadata is None

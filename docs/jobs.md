@@ -24,9 +24,11 @@ GitHub Actions runs stock and MF jobs from `.github/workflows/`. Jobs are Python
 - NSE universe sync writes `stocks`.
 - EOD price jobs write `stock_prices_daily`.
 - EOD price jobs count an empty provider response as a failed symbol, not a successful insert.
+- Stock universe, EOD price, fundamentals, and corporate event workflows select FinEdge with `STOCK_DATA_PROVIDER=finedge`.
 - YFinance is used only when NSE bhavcopy returns empty or local price history is unavailable.
 - Fundamentals sync is skipped when no external provider is configured.
 - Ratio calculation writes `ratios_snapshot` only when enough statement data exists.
 - Every provider job writes `data_provider_runs` where possible.
 - Deprecated CSV scripts under `backend/scripts/deprecated/` are not scheduled.
-- All secrets are stored as GitHub Repository Secrets: `SUPABASE_URL`, `SUPABASE_KEY`, `INDIAN_API_KEY`.
+- Stock job secrets are stored as GitHub Repository Secrets: `SUPABASE_URL`, `SUPABASE_KEY`, `FINEDGE_API_KEY`.
+- MF sync still uses `INDIAN_API_KEY` for IndianAPI mutual fund data.
