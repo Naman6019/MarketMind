@@ -130,3 +130,32 @@ def test_stock_price_upsert_payload_format():
         "volume": 1000,
         "source": "nse_bhavcopy",
     }
+
+
+def test_indianapi_eod_prices_use_documented_symbol_param(monkeypatch):
+    from app.providers import indianapi_provider
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"datasets": []}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        captured["headers"] = headers
+        return FakeResponse()
+
+    monkeypatch.setenv("INDIANAPI_KEY", "test-key")
+    monkeypatch.setattr(indianapi_provider.httpx, "get", fake_get)
+
+    provider = indianapi_provider.IndianAPIProvider()
+    provider.get_eod_prices("TATAMOTORS")
+
+    assert captured["url"].endswith("/historical_data")
+    assert captured["params"]["symbol"] == "TATAMOTORS"
+    assert "stock_name" not in captured["params"]
+    assert captured["headers"]["X-API-Key"] == "test-key"

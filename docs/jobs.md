@@ -23,6 +23,7 @@ GitHub Actions runs stock and MF jobs from `.github/workflows/`. Jobs are Python
 - Jobs use upserts and are safe to rerun.
 - NSE universe sync writes `stocks`.
 - EOD price jobs write `stock_prices_daily`.
+- EOD price jobs count an empty provider response as a failed symbol, not a successful insert.
 - YFinance is used only when NSE bhavcopy returns empty or local price history is unavailable.
 - Fundamentals sync is skipped when no external provider is configured.
 - Ratio calculation writes `ratios_snapshot` only when enough statement data exists.

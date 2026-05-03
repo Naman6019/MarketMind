@@ -68,6 +68,9 @@ def main():
         try:
             if hasattr(provider, 'get_eod_prices'):
                 history_dicts = provider.get_eod_prices(symbol)
+                if not history_dicts:
+                    raise ValueError("No price history returned by provider")
+
                 prices = []
                 for h in history_dicts:
                     prices.append(StockPriceDaily(
@@ -85,10 +88,10 @@ def main():
                         source=h.get("source") or provider.name
                     ))
                 repo.upsert_stock_prices_daily(prices)
+                run.symbols_succeeded += 1
             else:
                 logger.warning(f"Provider {provider.name} does not implement get_eod_prices(). Returning empty stub.")
-                
-            run.symbols_succeeded += 1
+                raise ValueError("Provider does not implement get_eod_prices")
         except Exception as e:
             run.symbols_failed += 1
             logger.error(f"Failed to sync {symbol}: {e}")

@@ -71,7 +71,7 @@ class IndianAPIProvider(FundamentalsProvider):
         try:
             res = httpx.get(
                 f"{self.base_url}/historical_data",
-                params={"stock_name": symbol, "period": "1yr", "filter": "price"},
+                params={"symbol": symbol, "period": "1yr", "filter": "price"},
                 headers=self._get_headers(),
                 timeout=15.0,
             )

@@ -18,6 +18,8 @@ STOCK_YFINANCE_FALLBACK_LIMIT=150
 - `finedge`: adapter stub, disabled without `FINEDGE_API_KEY`.
 - `indianapi`: active provider (`INDIANAPI_KEY` required). Implemented: stock universe, EOD price history, corporate actions, MF list + details. Financial statement methods (`get_quarterly_results`, `get_balance_sheet`, etc.) are **stubs** pending `/historical_stats` expansion.
 
+IndianAPI EOD history uses `/historical_data` with `symbol`, `period`, and `filter` query params.
+
 If a selected paid provider is unavailable, backend code logs a warning and falls back to `manual`.
 
 ## Adding a Paid Provider
