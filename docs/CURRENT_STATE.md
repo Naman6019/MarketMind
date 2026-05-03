@@ -1,6 +1,6 @@
 # Current State
 
-**Last Updated**: 2026-05-01
+**Last Updated**: 2026-05-03
 
 ## Project Summary
 MarketMind is a research-only Indian equities and mutual fund app.
@@ -29,6 +29,8 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Next.js `/api/*` proxy pattern is the required frontend/backend boundary.
 - GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 - Mobile dashboard layout keeps chat mounted behind comparison overlays, and chat state lives in a shared store so query/messages survive canvas-to-chat switches.
+- `IndianAPIProvider` is fully implemented for stock universe, EOD prices, corporate actions, and MF data (AUM, NAV, returns). Financial statement methods are stubs pending expansion.
+- `sync_mf_from_indianapi.py` job syncs MF AUM and returns from IndianAPI into the `mutual_funds` Supabase table, running as part of the `mf-sync.yml` workflow.
 
 ## In Progress
 - Expanding stock coverage beyond the current Nifty-focused list.
@@ -37,7 +39,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - **Premium Landing Page (`/`) with Framer Motion animations and Dashboard moved to (`/dashboard`)**.
 
 ## Known Gaps
-- Paid fundamentals provider mappings are not implemented yet.
+- IndianAPI financial statement endpoints (`get_quarterly_results`, `get_balance_sheet`, etc.) are stubs; `FUNDAMENTALS_PROVIDER=manual` remains the active path.
 - Frontend proxy route rate limiting still pending.
 - YFinance rate limits often on Render.
 - Portfolio overlap is partial because AMFI holdings often returns `Nil`.
@@ -50,4 +52,4 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Supabase stock repository access lives in `backend/app/repositories/stock_repository.py`.
 - Provider adapters live in `backend/app/providers/`.
 - Ratio calculation lives in `backend/app/services/ratio_engine.py`.
-- GitHub Actions runs stock universe, EOD price, fundamentals, and ratio jobs.
+- GitHub Actions runs 7 workflows: stock universe, EOD prices, fundamentals + ratios (weekly), corporate events, legacy EOD fetch, MF sync, and keepalive. See `docs/jobs.md` for the full schedule.

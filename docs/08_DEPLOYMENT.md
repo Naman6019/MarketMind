@@ -17,6 +17,15 @@ MarketMind utilizes a split deployment architecture due to the differing runtime
 ## Scheduled Jobs (GitHub Actions)
 - **Why**: Vercel serverless functions lack native Python runtime support, which is necessary for the EOD and MF syncing scripts.
 - **Workflows**:
-  - `fetch_stocks.yml`: Runs `scripts/run_fetch.py` daily at 16:30 IST (11:00 UTC).
-  - `mf-sync.yml`: Triggers mutual fund metadata and NAV updates.
-- **Secrets**: Handled via GitHub Repository Secrets.
+
+| Workflow file | Schedule (UTC) | Description |
+|---|---|---|
+| `fetch_stocks.yml` | Daily `0 11 * * *` | Runs `scripts/run_fetch.py` for legacy EOD stock fetch |
+| `mf-sync.yml` | Weekdays `30 13 * * 1-5` | AMFI NAV → NAV history → MF metadata (TER/AUM) → IndianAPI MF AUM/returns |
+| `sync-stock-universe.yml` | Daily `0 1 * * *` | Syncs all NSE/BSE stock metadata via IndianAPI |
+| `sync-prices-daily.yml` | Weekdays `30 10 * * 1-5` | Syncs latest EOD prices via IndianAPI |
+| `sync-fundamentals-weekly.yml` | Saturdays `0 2 * * 6` | Fetches financial statements + recalculates ratios |
+| `sync-corporate-events.yml` | Daily `0 3 * * *` | Fetches dividends, splits, bonuses via IndianAPI |
+| `keepalive.yml` | Scheduled | Pings Render to prevent free-tier spin-down |
+
+- **Secrets**: Handled via GitHub Repository Secrets (`SUPABASE_URL`, `SUPABASE_KEY`, `INDIAN_API_KEY`).

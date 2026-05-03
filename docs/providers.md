@@ -16,7 +16,7 @@ STOCK_YFINANCE_FALLBACK_LIMIT=150
 - `nse`: stock universe and EOD price data.
 - `yfinance`: fallback for price/history only, not a primary fundamentals provider.
 - `finedge`: adapter stub, disabled without `FINEDGE_API_KEY`.
-- `indianapi`: adapter stub, disabled without `INDIANAPI_KEY`.
+- `indianapi`: active provider (`INDIANAPI_KEY` required). Implemented: stock universe, EOD price history, corporate actions, MF list + details. Financial statement methods (`get_quarterly_results`, `get_balance_sheet`, etc.) are **stubs** pending `/historical_stats` expansion.
 
 If a selected paid provider is unavailable, backend code logs a warning and falls back to `manual`.
 
