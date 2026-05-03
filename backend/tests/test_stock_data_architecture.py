@@ -154,6 +154,53 @@ def test_chat_stock_compare_item_uses_quant_service_shape(monkeypatch):
     assert item["risk_period"] == "3Y"
 
 
+def test_synthesis_prompt_excludes_large_comparison_payload(monkeypatch):
+    import asyncio
+    from app import main
+
+    captured = {}
+
+    async def fake_chat(messages, format="text", max_retries=2):
+        captured["context"] = messages[1]["content"]
+        return "TCS and Reliance have structured comparison data, with missing values limiting the conclusion."
+
+    monkeypatch.setattr(main, "function_ollama_chat", fake_chat)
+
+    quant_data = {
+        "comparison": {
+            "TCS": {
+                "symbol": "TCS",
+                "price": 100,
+                "historical_period": "1y",
+                "fundamentals": {},
+                "price_history": [{"date": f"2026-01-{day:02d}", "close": day} for day in range(1, 29)],
+                "financials": {"annual": [{"revenue": 1}], "quarterly": [{"revenue": 2}]},
+            },
+            "Reliance": {
+                "symbol": "RELIANCE",
+                "price": 200,
+                "historical_period": "1y",
+                "fundamentals": {},
+                "price_history": [{"date": f"2026-02-{day:02d}", "close": day} for day in range(1, 29)],
+                "financials": {"annual": [{"revenue": 3}], "quarterly": [{"revenue": 4}]},
+            },
+        }
+    }
+
+    answer = asyncio.run(main.synthesis_response(
+        "Compare TCS and Reliance",
+        {"intent": "compare", "compare_entities": ["TCS", "Reliance"]},
+        quant_data,
+        [],
+    ))
+
+    assert "### Data Table" in answer
+    assert "Structured Data Table:" in captured["context"]
+    assert "price_history" not in captured["context"]
+    assert "financials" not in captured["context"]
+    assert len(captured["context"]) < 5000
+
+
 def test_corporate_events_job_uses_finedge_even_if_stock_provider_is_indianapi(monkeypatch):
     from app.jobs import sync_corporate_events
 

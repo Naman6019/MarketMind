@@ -871,19 +871,20 @@ Use neutral research language. Do not use advice words or phrases like buy, sell
 If data is unavailable for an entity, mention that the comparison is limited by missing data.
 Keep it to 3-5 concise sentences."""
     
+    notes_context = "\n".join([f"- {note}" for note in data_notes]) if data_notes else "- None"
     context = f"""
 User Query: {query}
 Identified Intent: {intent}
 Identified Ticker: {intent_info.get('ticker')}
 
-Structured Data:
-{json.dumps(quant_data, indent=2)}
+Structured Data Table:
+{table_markdown}
+
+Data Notes:
+{notes_context}
 
 News Data:
-{json.dumps(news_data, indent=2)}
-
-Screening Results:
-{json.dumps(screening_results, indent=2)}
+{news_markdown}
 """
 
     messages = [
