@@ -57,4 +57,5 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Provider adapters live in `backend/app/providers/`.
 - Ratio calculation lives in `backend/app/services/ratio_engine.py`.
 - Provider sync issue logging uses optional `data_quality_issues`; apply `backend/migrations/20260503_add_data_quality_issues.sql` if the table is missing.
+- NSE bhavcopy value traded needs `backend/migrations/20260503_add_stock_price_value_traded.sql` on older Supabase schemas.
 - GitHub Actions runs 8 workflows: stock universe, daily EOD prices, historical price backfill, fundamentals + ratios (weekly), corporate events, legacy EOD fetch, MF sync, and keepalive. See `docs/jobs.md` for the full schedule.

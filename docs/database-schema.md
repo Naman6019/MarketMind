@@ -4,6 +4,7 @@ Run:
 
 ```bash
 psql "$DATABASE_URL" -f backend/migrations/20260501_source_neutral_stock_data.sql
+psql "$DATABASE_URL" -f backend/migrations/20260503_add_stock_price_value_traded.sql
 psql "$DATABASE_URL" -f backend/migrations/20260503_add_data_quality_issues.sql
 ```
 

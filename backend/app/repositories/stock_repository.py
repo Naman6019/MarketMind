@@ -26,6 +26,7 @@ class StockRepository:
     def __init__(self, client: Any | None = None) -> None:
         self.supabase = client or default_supabase
         self._data_quality_issues_available = True
+        self._table_disabled_columns: dict[str, set[str]] = {}
 
     def upsert_stocks(self, profiles: list[StockProfile]) -> None:
         rows = [self._with_updated_at(self._to_row(profile)) for profile in profiles]
@@ -168,9 +169,26 @@ class StockRepository:
     def _upsert(self, table: str, rows: list[dict[str, Any]], on_conflict: str) -> None:
         if not rows or not self._has_client():
             return
+        rows = self._without_disabled_columns(table, rows)
         try:
             self.supabase.table(table).upsert(rows, on_conflict=on_conflict).execute()
         except Exception as exc:
+            missing_column = _missing_column_from_error(exc)
+            if missing_column:
+                logger.warning(
+                    "Retrying %s upsert without missing column %s. Apply pending migrations to keep all fields.",
+                    table,
+                    missing_column,
+                )
+                self._table_disabled_columns.setdefault(table, set()).add(missing_column)
+                retry_rows = self._without_disabled_columns(table, rows)
+                if retry_rows:
+                    try:
+                        self.supabase.table(table).upsert(retry_rows, on_conflict=on_conflict).execute()
+                        return
+                    except Exception as retry_exc:
+                        logger.warning("Retry upsert failed for %s: %s", table, retry_exc)
+                        return
             logger.warning("Batch upsert failed for %s: %s", table, exc)
 
     def _fetch_one(self, table: str, symbol: str, order: str | None = None) -> dict[str, Any] | None:
@@ -191,6 +209,12 @@ class StockRepository:
             return True
         logger.warning("Supabase client is not initialized.")
         return False
+
+    def _without_disabled_columns(self, table: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        disabled = self._table_disabled_columns.get(table)
+        if not disabled:
+            return rows
+        return [{key: value for key, value in row.items() if key not in disabled} for row in rows]
 
     @staticmethod
     def _to_row(model: Any) -> dict[str, Any]:
@@ -376,3 +400,15 @@ class StockRepository:
 def _is_missing_table_error(exc: Exception, table_name: str) -> bool:
     text = str(exc)
     return table_name in text and ("PGRST205" in text or "Could not find the table" in text)
+
+
+def _missing_column_from_error(exc: Exception) -> str | None:
+    text = str(exc)
+    marker = "Could not find the '"
+    if "PGRST204" not in text or marker not in text:
+        return None
+    start = text.find(marker) + len(marker)
+    end = text.find("'", start)
+    if end <= start:
+        return None
+    return text[start:end]
