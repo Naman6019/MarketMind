@@ -110,6 +110,50 @@ def test_quant_compare_isolates_symbol_failure(monkeypatch):
     assert response["comparison"]["BROKEN"]["error"] == "Data lookup failed for this symbol."
 
 
+def test_chat_compare_table_handles_empty_risk_period():
+    from app import main
+
+    table, notes = main._data_table_markdown("compare", {
+        "comparison": {
+            "TCS": {
+                "symbol": "TCS",
+                "price": 100,
+                "historical_period": "",
+                "fundamentals": {},
+            }
+        }
+    })
+
+    assert notes == []
+    assert "Beta (period)" in table
+    assert "TCS" in table
+
+
+def test_chat_stock_compare_item_uses_quant_service_shape(monkeypatch):
+    from app import main
+
+    def fake_build_stock_compare(symbols):
+        assert symbols == ["TCS"]
+        return {
+            "comparison": {
+                "TCS": {
+                    "symbol": "TCS",
+                    "price": 100,
+                    "historical_period": "1y",
+                    "fundamentals": {},
+                }
+            }
+        }
+
+    monkeypatch.setattr(main, "build_stock_compare", fake_build_stock_compare)
+
+    item = main._stock_compare_item("TCS", {"beta": 1.1, "risk_period": "3Y"})
+
+    assert item["price"] == 100
+    assert item["beta"] == 1.1
+    assert item["risk_period"] == "3Y"
+
+
 def test_stock_price_upsert_payload_format():
     payload = build_stock_price_upsert_payload("reliance", {
         "date": "2026-05-01",

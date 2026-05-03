@@ -20,6 +20,7 @@
 - [x] Fixed MF/NIFTY timezone mismatch in risk metrics.
 - [x] Fixed MF comparison routing so it does not fall back to stock tickers.
 - [x] Added deterministic `/api/chat` response tables with missing-entity notes, news fallback text, and safer research wording.
+- [x] Fixed `/api/chat` stock comparison table crash when risk period data is missing.
 - [x] Added metric-only stock-to-stock comparison canvas.
 - [x] Added legacy CSV import foundation and premium fundamental comparison charts.
 - [x] Replaced active CSV dependency with source-neutral stock provider architecture.

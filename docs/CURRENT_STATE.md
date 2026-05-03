@@ -22,6 +22,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Fixed MF/NIFTY timezone mismatch in risk metrics.
 - Fixed MF comparison routing so it does not fall back to stock tickers.
 - Chat responses now render deterministic data tables from structured `quant_data`, including unavailable comparison entities and news fallback text.
+- `/api/chat` stock comparisons reuse the source-neutral stock comparison payload and tolerate missing risk periods in deterministic tables.
 - Stock-to-stock comparison has a metric-only canvas panel driven by `/api/chat` `system_action` data.
 - Stock fundamentals now use a source-neutral provider architecture with `/api/quant/stocks/*` endpoints. CSV fundamentals are no longer required for active app paths.
 - Legacy CSV tooling is isolated under `backend/scripts/deprecated/` and is not used by routes or GitHub Actions.

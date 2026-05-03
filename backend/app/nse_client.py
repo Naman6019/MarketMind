@@ -7,9 +7,18 @@ import io
 import pandas as pd
 from datetime import datetime, date
 import pytz
-from jugaad_data.nse import bhavcopy_save, NSELive
-from nsetools import Nse
 import yfinance as yf
+
+try:
+    from jugaad_data.nse import bhavcopy_save, NSELive
+except ImportError:
+    bhavcopy_save = None
+    NSELive = None
+
+try:
+    from nsetools import Nse
+except ImportError:
+    Nse = None
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +43,10 @@ def fetch_nse_bhavcopy(trade_date: date) -> list:
     os.makedirs(temp_dir, exist_ok=True)
     
     try:
+        if bhavcopy_save is None:
+            logger.warning("jugaad-data is unavailable; skipping legacy NSE bhavcopy fallback")
+            return []
+
         # jugaad-data: bhavcopy_save returns the path to the saved file
         # Note: trade_date should be a datetime.date object
         file_path = bhavcopy_save(trade_date, temp_dir)
@@ -275,7 +288,7 @@ def fetch_live_quote(symbol: str) -> dict:
                   (now_ist.hour * 60 + now_ist.minute <= 930)
     
     # 1. PRIMARY: jugaad-data NSELive (only during market hours)
-    if market_open:
+    if market_open and NSELive is not None:
         try:
             n = NSELive()
             quote = n.stock_quote(symbol)
@@ -296,23 +309,24 @@ def fetch_live_quote(symbol: str) -> dict:
             time.sleep(1) # Small delay before fallback
 
     # 2. FALLBACK: nsetools
-    try:
-        nse = Nse()
-        q = nse.get_quote(symbol.lower())
-        if q and 'lastPrice' in q:
-            return {
-                'symbol': symbol,
-                'last_price': q['lastPrice'],
-                'open': q['open'],
-                'high': q['dayHigh'],
-                'low': q['dayLow'],
-                'prev_close': q['previousClose'],
-                'change': q['change'],
-                'pchange': q['pChange'],
-                'source': 'nsetools'
-            }
-    except Exception as e:
-        logger.debug(f"nsetools failed for {symbol}: {e}")
+    if Nse is not None:
+        try:
+            nse = Nse()
+            q = nse.get_quote(symbol.lower())
+            if q and 'lastPrice' in q:
+                return {
+                    'symbol': symbol,
+                    'last_price': q['lastPrice'],
+                    'open': q['open'],
+                    'high': q['dayHigh'],
+                    'low': q['dayLow'],
+                    'prev_close': q['previousClose'],
+                    'change': q['change'],
+                    'pchange': q['pChange'],
+                    'source': 'nsetools'
+                }
+        except Exception as e:
+            logger.debug(f"nsetools failed for {symbol}: {e}")
 
     # 3. FINAL FALLBACK: YFinance
     try:

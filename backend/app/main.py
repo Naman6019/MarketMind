@@ -603,9 +603,8 @@ def _format_inr_market_cap(value: Any) -> str:
     return f"₹{amount:,.0f}"
 
 def _risk_period(data: dict) -> str:
-    period = data.get("risk_period") or data.get("historical_period") or ""
-    text = str(period).split()[0].upper()
-    return text if text else "period"
+    period = str(data.get("risk_period") or data.get("historical_period") or "").strip()
+    return period.split()[0].upper() if period else "period"
 
 def _safe_recommendation(value: Any) -> str:
     if _is_missing(value):
@@ -682,6 +681,16 @@ def _fund_metric_rows(data: dict) -> list[tuple[str, str]]:
 
 def _looks_like_fund(data: dict) -> bool:
     return any(key in data for key in ["nav", "nav_date", "fund_house", "expense_ratio"]) and "timestamp" not in data
+
+def _stock_compare_item(symbol: str, risk_metrics: dict | None = None) -> dict:
+    stock_response = build_stock_compare([symbol])
+    comparison = stock_response.get("comparison") or {}
+    item = comparison.get(symbol) or next(iter(comparison.values()), None)
+    if not item:
+        return {"error": "Data not found for this entity"}
+    if risk_metrics and not item.get("error"):
+        item.update(risk_metrics)
+    return item
 
 def _comparison_rows(comparison: dict) -> tuple[list[str], list[list[str]], list[str]]:
     entities = list(comparison.keys())
@@ -1276,34 +1285,10 @@ async def chat_endpoint(req: ChatRequest):
                     db_data.update(risk_metrics)
                     comparison_results[entity] = db_data
                 elif asset_type != "mutual_fund" and (stock_symbol or yf_ticker):
-                    from app.repositories.stock_repository import StockRepository
-                    from dataclasses import asdict
-                    repo = StockRepository()
                     sym = stock_symbol or yf_ticker
-                    comp = repo.compare_stocks([sym])
-                    c_data = comp.get(sym)
-                    if c_data and c_data.get("profile"):
-                        # Model must not be asked to invent missing financial values
-                        comparison_results[entity] = {
-                            "profile": asdict(c_data["profile"]) if c_data.get("profile") else {},
-                            "ratios": asdict(c_data["ratios"]) if c_data.get("ratios") else {},
-                        }
-                    else:
-                        comparison_results[entity] = {"error": "Data not found for this entity"}
+                    comparison_results[entity] = _stock_compare_item(sym, risk_metrics)
                 elif asset_type != "mutual_fund":
-                    from app.repositories.stock_repository import StockRepository
-                    from dataclasses import asdict
-                    repo = StockRepository()
-                    comp = repo.compare_stocks([entity])
-                    c_data = comp.get(entity)
-                    if c_data and c_data.get("profile"):
-                        # Model must not be asked to invent missing financial values
-                        comparison_results[entity] = {
-                            "profile": asdict(c_data["profile"]) if c_data.get("profile") else {},
-                            "ratios": asdict(c_data["ratios"]) if c_data.get("ratios") else {},
-                        }
-                    else:
-                        comparison_results[entity] = {"error": "Data not found for this entity"}
+                    comparison_results[entity] = _stock_compare_item(entity, risk_metrics)
                 else:
                     comparison_results[entity] = {"error": "Data not found for this entity"}
                     
