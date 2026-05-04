@@ -120,10 +120,11 @@ def get_nifty50_ticker():
     try:
         universe = load_stock_universe("NIFTY50")
         symbols = list(universe.keys())[:50]
+        recent_prices = repository.get_recent_prices_for_symbols(symbols, limit_per_symbol=2)
         items = []
 
         for symbol in symbols:
-            prices = repository.get_recent_price_history(symbol, limit=2)
+            prices = recent_prices.get(symbol) or []
             latest = prices[-1] if prices else None
             previous = prices[-2] if len(prices) > 1 else None
             close = _safe_float(getattr(latest, "close", None))

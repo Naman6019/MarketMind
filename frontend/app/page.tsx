@@ -1,7 +1,6 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
+
+export const revalidate = 60;
 
 type TickerItem = {
   symbol: string;
@@ -51,33 +50,33 @@ const formatChange = (value: number | null) => {
   return `${sign}${value.toFixed(2)}%`;
 };
 
-export default function LandingPage() {
-  const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
-  const [tickerStatus, setTickerStatus] = useState<"loading" | "ready" | "error">("loading");
+const tickerUrl = () => {
+  const base = process.env.NODE_ENV === "development"
+    ? "http://127.0.0.1:8000"
+    : process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL;
 
-  useEffect(() => {
-    let cancelled = false;
+  return base ? `${base}/api/quant/stocks/nifty50/ticker` : null;
+};
 
-    fetch("/api/quant/stocks/nifty50/ticker")
-      .then((response) => {
-        if (!response.ok) throw new Error("Failed to load Nifty 50 ticker");
-        return response.json();
-      })
-      .then((data) => {
-        if (cancelled) return;
-        setTickerItems(Array.isArray(data.items) ? data.items : []);
-        setTickerStatus("ready");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setTickerStatus("error");
-      });
+const getTickerItems = async (): Promise<TickerItem[]> => {
+  const url = tickerUrl();
+  if (!url) return [];
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  try {
+    const response = await fetch(url, {
+      next: { revalidate: 60 },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data.items) ? data.items : [];
+  } catch {
+    return [];
+  }
+};
 
+export default async function LandingPage() {
+  const tickerItems = await getTickerItems();
   const tickerGroup = tickerItems.length > 0 ? tickerItems : [];
 
   return (
@@ -125,12 +124,8 @@ export default function LandingPage() {
             Nifty 50
           </div>
           <div className="landing-market-strip-window">
-            {tickerStatus === "loading" ? (
-              <div className="landing-market-strip-message">Loading current stock changes...</div>
-            ) : tickerStatus === "error" ? (
+            {tickerItems.length === 0 ? (
               <div className="landing-market-strip-message">Current Nifty 50 changes unavailable.</div>
-            ) : tickerItems.length === 0 ? (
-              <div className="landing-market-strip-message">No Nifty 50 changes available yet.</div>
             ) : (
               <div className="landing-market-strip-track" style={{ whiteSpace: "nowrap" }}>
                 {[0, 1].map((groupIndex) => (

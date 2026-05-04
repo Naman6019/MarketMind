@@ -131,6 +131,32 @@ class StockRepository:
             logger.warning("Recent price lookup failed for %s: %s", clean, exc)
             return []
 
+    def get_recent_prices_for_symbols(self, symbols: list[str], limit_per_symbol: int = 2) -> dict[str, list[StockPriceDaily]]:
+        clean_symbols = [self._normalize_symbol(symbol) for symbol in symbols if symbol]
+        if not clean_symbols or not self._has_client():
+            return {}
+        try:
+            response = (
+                self.supabase.table("stock_prices_daily")
+                .select("*")
+                .in_("symbol", clean_symbols)
+                .order("date", desc=True)
+                .limit(len(clean_symbols) * max(limit_per_symbol, 1) * 2)
+                .execute()
+            )
+            grouped_rows: dict[str, list[dict[str, Any]]] = {symbol: [] for symbol in clean_symbols}
+            for row in response.data or []:
+                symbol = row.get("symbol")
+                if symbol in grouped_rows and len(grouped_rows[symbol]) < limit_per_symbol:
+                    grouped_rows[symbol].append(row)
+            return {
+                symbol: self._map_many(list(reversed(rows)), self._price_from_row, "stock_prices_daily", symbol)
+                for symbol, rows in grouped_rows.items()
+            }
+        except Exception as exc:
+            logger.warning("Batch recent price lookup failed: %s", exc)
+            return {}
+
     def get_latest_ratios(self, symbol: str) -> RatioSnapshot | None:
         clean = self._normalize_symbol(symbol)
         row = self._fetch_one("ratios_snapshot", clean, order="snapshot_date")
