@@ -10,6 +10,7 @@ from app.providers.finedge_provider import FinEdgeProvider
 from app.providers.indianapi_provider import IndianAPIProvider
 from app.providers.nse_provider import NSEProvider
 from app.providers.yfinance_provider import YFinanceProvider
+from app.stock_universe import load_stock_universe
 
 router = APIRouter(prefix="/api/quant", tags=["quant"])
 repository = StockRepository()
@@ -49,6 +50,14 @@ def _safe_asdict(obj: Any) -> Any:
     if hasattr(obj, 'metadata'):
         d['metadata'] = getattr(obj, 'metadata')
     return d
+
+def _safe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 @router.get("/stocks/compare")
 def compare_stocks(symbols: str = Query(..., description="Comma separated symbols")):
@@ -105,6 +114,37 @@ def compare_stocks(symbols: str = Query(..., description="Comma separated symbol
         raise HTTPException(status_code=500, detail="Unexpected error during comparison")
 
     return response
+
+@router.get("/stocks/nifty50/ticker")
+def get_nifty50_ticker():
+    try:
+        universe = load_stock_universe("NIFTY50")
+        symbols = list(universe.keys())[:50]
+        items = []
+
+        for symbol in symbols:
+            prices = repository.get_recent_price_history(symbol, limit=2)
+            latest = prices[-1] if prices else None
+            previous = prices[-2] if len(prices) > 1 else None
+            close = _safe_float(getattr(latest, "close", None))
+            prev_close = _safe_float(getattr(previous, "close", None))
+            change_pct = ((close - prev_close) / prev_close * 100) if close is not None and prev_close not in (None, 0) else None
+
+            items.append({
+                "symbol": symbol,
+                "name": universe.get(symbol, {}).get("company_name") or symbol,
+                "price": close,
+                "change_pct": round(change_pct, 2) if change_pct is not None else None,
+                "date": getattr(latest, "date", None).isoformat() if latest else None,
+            })
+
+        return {
+            "index": "NIFTY50",
+            "items": items,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception:
+        raise HTTPException(status_code=500, detail="Unexpected error")
 
 @router.get("/stocks/{symbol}/profile")
 def get_stock_profile(symbol: str):

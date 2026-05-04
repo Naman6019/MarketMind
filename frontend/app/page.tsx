@@ -1,173 +1,199 @@
 "use client";
 
-import React from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import { motion } from 'framer-motion';
-import { ArrowRight, BarChart3, LineChart, Cpu, ShieldCheck, Zap } from 'lucide-react';
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+type TickerItem = {
+  symbol: string;
+  name: string;
+  price: number | null;
+  change_pct: number | null;
+  date: string | null;
+};
+
+const trustItems = [
+  { icon: "monitoring", label: "Indian Markets", warning: false },
+  { icon: "candlestick_chart", label: "Stocks + Mutual Funds", warning: false },
+  { icon: "table_chart", label: "Structured Quant Data", warning: false },
+  { icon: "smart_toy", label: "AI-Assisted Research", warning: false },
+  { icon: "warning", label: "Research Only", warning: true },
+];
+
+const features = [
+  {
+    icon: "forum",
+    title: "AI Research Chat",
+    body: "Query market data in natural language. MarketMind interprets financial metrics and keeps numbers tied to structured data.",
+    wide: true,
+    prompt: "> Analyze Reliance Industries debt-to-equity ratio vs sector average...",
+  },
+  {
+    icon: "compare_arrows",
+    title: "Stock Comparison",
+    body: "Side-by-side fundamental research for PE, ROE, margins, and sector context.",
+  },
+  {
+    icon: "pie_chart",
+    title: "Mutual Fund Analytics",
+    body: "Deep dive into AUM, expense ratios, and rolling returns.",
+  },
+  {
+    icon: "feed",
+    title: "News Context & Structured Tables",
+    body: "Real-time news mapped to asset price action, with dense financial data in clean tables.",
+    wide: true,
+  },
+];
+
+const formatChange = (value: number | null) => {
+  if (value === null || value === undefined) return "--";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}%`;
+};
 
 export default function LandingPage() {
-  const fadeIn = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 }
-  };
+  const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
+  const [tickerStatus, setTickerStatus] = useState<"loading" | "ready" | "error">("loading");
 
-  const staggerContainer = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.2
-      }
-    }
-  };
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/quant/stocks/nifty50/ticker")
+      .then((response) => {
+        if (!response.ok) throw new Error("Failed to load Nifty 50 ticker");
+        return response.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setTickerItems(Array.isArray(data.items) ? data.items : []);
+        setTickerStatus("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTickerStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const tickerGroup = tickerItems.length > 0 ? tickerItems : [];
 
   return (
-    <div className="min-h-screen w-full max-w-[100vw] overflow-x-clip bg-[#0b0c10] text-[#c5c6c7] font-sans selection:bg-[#66fcf1] selection:text-[#0b0c10]">
-      {/* Background Glows */}
-      <div className="fixed inset-0 w-screen overflow-hidden -z-10 pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[#45a29e] opacity-[0.15] blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#66fcf1] opacity-[0.1] blur-[120px]" />
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex w-full items-center justify-between px-4 py-5 sm:px-6 lg:px-10 xl:px-12">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#66fcf1] to-[#45a29e] shadow-[0_0_20px_rgba(102,252,241,0.4)] flex items-center justify-center">
-            <LineChart className="text-[#0b0c10] w-6 h-6" />
-          </div>
-          <span className="text-xl font-bold text-white tracking-wide">MarketMind</span>
+    <div className="landing-page">
+      <header className="landing-nav">
+        <div className="landing-nav-inner">
+          <Link href="/" className="landing-brand">MarketMind</Link>
+          <nav className="landing-links" aria-label="Primary">
+            <a className="active" href="#features">Features</a>
+            <a href="#workflow">How it Works</a>
+            <a href="#data">Data</a>
+            <a href="#disclaimer">Disclaimer</a>
+          </nav>
+          <Link href="/dashboard" className="landing-small-cta">Launch App</Link>
         </div>
-        <Link 
-          href="/dashboard"
-          className="flex items-center gap-2 rounded-full border border-[rgba(197,198,199,0.1)] bg-[rgba(31,40,51,0.8)] px-4 py-2.5 font-medium text-white shadow-[0_4px_20px_rgba(0,0,0,0.3)] backdrop-blur-md transition-all duration-300 hover:border-[#66fcf1] hover:bg-[#1f2833] sm:px-6"
-        >
-          Launch App
-          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-        </Link>
-      </nav>
+      </header>
 
-      {/* Hero Section */}
-      <main className="w-full px-4 pt-16 pb-24 sm:px-6 lg:px-10 lg:pt-20 lg:pb-32 xl:px-12">
-        <div className="grid min-w-0 grid-cols-1 items-center gap-12 xl:grid-cols-[minmax(520px,0.82fr)_minmax(640px,1.18fr)] xl:gap-20">
-          <motion.div 
-            initial="hidden"
-            animate="visible"
-            variants={staggerContainer}
-            className="flex min-w-0 flex-col gap-8"
-          >
-            <motion.div variants={fadeIn} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[rgba(102,252,241,0.1)] border border-[rgba(102,252,241,0.2)] w-fit">
-              <Zap className="w-4 h-4 text-[#66fcf1]" />
-              <span className="text-sm font-medium text-[#66fcf1]">AI-Orchestrated Financial Research</span>
-            </motion.div>
-            
-            <motion.h1 variants={fadeIn} className="max-w-[12ch] text-[clamp(3rem,5.6vw,6.75rem)] font-bold leading-[1.06] text-white">
-              Smarter Markets.<br/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#66fcf1] to-[#45a29e]">
-                Sharper Minds.
+      <main className="landing-main">
+        <section className="landing-hero">
+          <div className="landing-hero-glow" />
+          <h1>Research Indian stocks and mutual funds with AI-assisted market intelligence.</h1>
+          <p>
+            Merging structured price data, fundamental metrics, and AI-driven insights into a single institutional terminal built for the discerning retail investor.
+          </p>
+
+          <div className="landing-actions">
+            <Link href="/dashboard" className="landing-primary-action">Start Researching</Link>
+            <a href="#features" className="landing-secondary-action">Explore Features</a>
+          </div>
+
+          <div className="landing-trust-strip">
+            {trustItems.map((item) => (
+              <span className="landing-trust-pill" key={item.label}>
+                <span className={`material-symbols-outlined ${item.warning ? "warning" : ""}`}>{item.icon}</span>
+                {item.label}
               </span>
-            </motion.h1>
-            
-            <motion.p variants={fadeIn} className="text-lg text-[#8a9199] max-w-xl leading-relaxed">
-              MarketMind fuses real-time quantitative metrics with AI-driven news sentiment to provide retail investors with institutional-grade insights for the Indian stock and mutual fund markets.
-            </motion.p>
-            
-            <motion.div variants={fadeIn} className="flex flex-col sm:flex-row gap-4 pt-4">
-              <Link 
-                href="/dashboard"
-                className="px-8 py-4 rounded-xl bg-gradient-to-r from-[#66fcf1] to-[#45a29e] text-[#0b0c10] font-bold text-lg hover:shadow-[0_0_30px_rgba(102,252,241,0.5)] transition-all duration-300 flex items-center justify-center gap-2"
-              >
-                Start Researching Now
-                <ArrowRight className="w-5 h-5" />
-              </Link>
-              <a 
-                href="#features"
-                className="px-8 py-4 rounded-xl bg-[rgba(31,40,51,0.6)] border border-[rgba(197,198,199,0.1)] text-white font-medium hover:bg-[#1f2833] transition-all duration-300 flex items-center justify-center backdrop-blur-md"
-              >
-                Explore Features
-              </a>
-            </motion.div>
-          </motion.div>
-
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9, rotateX: 10 }}
-            animate={{ opacity: 1, scale: 1, rotateX: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="relative w-full min-w-0 justify-self-stretch"
-          >
-            <div className="absolute inset-0 bg-gradient-to-tr from-[#66fcf1]/20 to-transparent rounded-2xl blur-2xl transform -rotate-3" />
-            <div className="relative w-full rounded-2xl border border-[rgba(197,198,199,0.1)] bg-[#1f2833]/80 backdrop-blur-xl p-2 shadow-2xl overflow-hidden transform hover:scale-[1.02] transition-transform duration-500">
-              <Image 
-                src="/hero.png" 
-                alt="MarketMind Dashboard Preview" 
-                width={800} 
-                height={600} 
-                sizes="(min-width: 1280px) 58vw, 100vw"
-                className="h-auto w-full max-w-none rounded-xl border border-[rgba(255,255,255,0.05)]"
-                priority
-              />
-            </div>
-          </motion.div>
-        </div>
-      </main>
-
-      {/* Features Section */}
-      <section id="features" className="relative overflow-hidden border-y border-[rgba(197,198,199,0.05)] bg-[rgba(11,12,16,0.8)] py-24 lg:py-32">
-        <div className="w-full px-4 sm:px-6 lg:px-10 xl:px-12">
-          <div className="text-center mb-20">
-            <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">Built for the Modern Investor</h2>
-            <p className="text-[#8a9199] text-lg max-w-2xl mx-auto">Everything you need to analyze, compare, and understand the markets without the noise.</p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-3 lg:gap-8">
-            {[
-              {
-                icon: <Cpu className="w-8 h-8 text-[#66fcf1]" />,
-                title: "Multi-Agent AI Pipeline",
-                desc: "An intelligent router classifies your intent, dispatching dedicated agents for quant data fetching and news sentiment analysis."
-              },
-              {
-                icon: <BarChart3 className="w-8 h-8 text-[#66fcf1]" />,
-                title: "Deep Quant Analytics",
-                desc: "Real-time auto-computed metrics including Alpha, Beta, Sharpe Ratio, and CAGR directly overlaid on historic NAV charts."
-              },
-              {
-                icon: <ShieldCheck className="w-8 h-8 text-[#66fcf1]" />,
-                title: "Head-to-Head Comparisons",
-                desc: "Compare mutual funds side-by-side with normalized performance charts and sector concentration breakdowns."
-              }
-            ].map((feature, idx) => (
-              <motion.div 
-                key={idx}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.2 }}
-                className="bg-[#1f2833]/40 border border-[rgba(197,198,199,0.1)] p-8 rounded-2xl hover:bg-[#1f2833]/80 transition-colors backdrop-blur-sm group"
-              >
-                <div className="w-16 h-16 rounded-2xl bg-[rgba(102,252,241,0.05)] flex items-center justify-center mb-6 border border-[rgba(102,252,241,0.1)] group-hover:scale-110 transition-transform">
-                  {feature.icon}
-                </div>
-                <h3 className="text-xl font-bold text-white mb-4">{feature.title}</h3>
-                <p className="text-[#8a9199] leading-relaxed">{feature.desc}</p>
-              </motion.div>
             ))}
           </div>
-        </div>
-      </section>
 
-      {/* Footer */}
-      <footer className="py-12 border-t border-[rgba(197,198,199,0.05)] text-center">
-        <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#66fcf1] to-[#45a29e] flex items-center justify-center">
-            <LineChart className="text-[#0b0c10] w-3 h-3" />
+        </section>
+
+        <section className="landing-market-strip" aria-label="Nifty 50 stock changes">
+          <div className="landing-market-strip-label">
+            <span className="material-symbols-outlined">candlestick_chart</span>
+            Nifty 50
           </div>
-          <span className="text-lg font-bold text-white">MarketMind</span>
+          <div className="landing-market-strip-window">
+            {tickerStatus === "loading" ? (
+              <div className="landing-market-strip-message">Loading current stock changes...</div>
+            ) : tickerStatus === "error" ? (
+              <div className="landing-market-strip-message">Current Nifty 50 changes unavailable.</div>
+            ) : tickerItems.length === 0 ? (
+              <div className="landing-market-strip-message">No Nifty 50 changes available yet.</div>
+            ) : (
+              <div className="landing-market-strip-track" style={{ whiteSpace: "nowrap" }}>
+                {[0, 1].map((groupIndex) => (
+                  <div className="landing-market-strip-group" key={groupIndex} aria-hidden={groupIndex === 1}>
+                    {tickerGroup.map((item) => {
+                      const isPositive = (item.change_pct ?? 0) >= 0;
+                      return (
+                        <span className="landing-market-tick" key={`${item.symbol}-${groupIndex}`} title={item.name}>
+                          <span>{item.symbol}</span>
+                          <strong className={isPositive ? "positive" : "negative"}>{formatChange(item.change_pct)}</strong>
+                        </span>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section id="workflow" className="landing-problem">
+          <h2>Market research is scattered across too many tabs.</h2>
+          <p>
+            Stop jumping between generic news portals, clunky screeners, and standalone AI chatbots. MarketMind unifies quantitative data with context-aware AI in one canvas for deep analysis.
+          </p>
+        </section>
+
+        <section id="features" className="landing-features">
+          {features.map((feature) => (
+            <article className={`landing-feature-card ${feature.wide ? "wide" : ""}`} key={feature.title}>
+              <span className="material-symbols-outlined">{feature.icon}</span>
+              <h3>{feature.title}</h3>
+              <p>{feature.body}</p>
+              {feature.prompt ? <code>{feature.prompt}</code> : null}
+            </article>
+          ))}
+        </section>
+
+        <section id="data" className="landing-data-card">
+          <span className="material-symbols-outlined">database</span>
+          <h2>Data-first, AI-second.</h2>
+          <p>
+            MarketMind prioritizes structured quantitative data. AI interprets facts instead of inventing them, and the interface separates verified metrics from generated synthesis.
+          </p>
+        </section>
+
+        <section className="landing-final-cta">
+          <h2>Start researching with more structure.</h2>
+          <Link href="/dashboard" className="landing-primary-action">Launch MarketMind</Link>
+        </section>
+      </main>
+
+      <footer id="disclaimer" className="landing-footer">
+        <div>
+          <strong>MarketMind</strong>
+          <p>© 2026 MarketMind Terminal. Information provided is for research only and does not constitute investment advice.</p>
         </div>
-        <p className="text-[#8a9199] text-sm">
-          &copy; {new Date().getFullYear()} MarketMind. All rights reserved. <br/>
-          Built with Next.js & FastAPI.
-        </p>
+        <nav aria-label="Footer">
+          <a href="#">Terms of Service</a>
+          <a href="#">Privacy Policy</a>
+          <a href="#">Regulatory Disclosure</a>
+          <a href="#">API Documentation</a>
+        </nav>
       </footer>
     </div>
   );

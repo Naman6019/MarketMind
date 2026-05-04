@@ -4,6 +4,12 @@
 - [x] Add a dedicated `/api/quant` backend endpoint to separate stock lookup from chat synthesis.
 - [ ] Add rate limiting for frontend proxy routes (`/api/chat`, `/api/cron/sync-mf`).
 
+## Future Features
+- [ ] Advanced charting: add richer stock/fund chart controls, date ranges, indicators, and mobile-friendly comparison views before considering WebGL.
+- [ ] Document analysis: support annual report/PDF upload, extraction, summaries, and cited answers.
+- [ ] Basic strategy backtesting: simulate simple rules against clean historical EOD data with fees, slippage, benchmark comparison, and result charts.
+- [ ] Historical anomaly detection: flag unusual price, volume, valuation, or fundamentals changes with evidence; avoid predictive wording until models are validated.
+
 ## In Progress
 - [ ] Expanding stock coverage beyond the current Nifty-focused list.
 - [ ] Testing `NIFTY500` vs `NIFTYTOTALMARKET`.

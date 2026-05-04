@@ -112,6 +112,25 @@ class StockRepository:
             logger.warning("Price history lookup failed for %s: %s", clean, exc)
             return []
 
+    def get_recent_price_history(self, symbol: str, limit: int = 2) -> list[StockPriceDaily]:
+        clean = self._normalize_symbol(symbol)
+        if not self._has_client():
+            return []
+        try:
+            response = (
+                self.supabase.table("stock_prices_daily")
+                .select("*")
+                .eq("symbol", clean)
+                .order("date", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            rows = list(reversed(response.data or []))
+            return self._map_many(rows, self._price_from_row, "stock_prices_daily", clean)
+        except Exception as exc:
+            logger.warning("Recent price lookup failed for %s: %s", clean, exc)
+            return []
+
     def get_latest_ratios(self, symbol: str) -> RatioSnapshot | None:
         clean = self._normalize_symbol(symbol)
         row = self._fetch_one("ratios_snapshot", clean, order="snapshot_date")
