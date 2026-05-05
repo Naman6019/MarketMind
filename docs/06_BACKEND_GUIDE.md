@@ -20,11 +20,11 @@ backend/
 │   │   └── stock_models.py  # StockProfile, StockPriceDaily, and other DTOs
 │   ├── providers/           # Source-neutral provider adapters
 │   │   ├── base.py          # Abstract FundamentalsProvider interface
-│   │   ├── indianapi_provider.py  # IndianAPI adapter (stock universe, EOD, corp actions, MF)
+│   │   ├── indianapi_provider.py  # IndianAPI adapter (stock universe, statements, prices, corp actions, MF)
 │   │   ├── yfinance_provider.py   # YFinance fallback adapter
 │   │   ├── manual_provider.py     # Reads from Supabase source-neutral tables
 │   │   ├── nse_provider.py        # NSE bhavcopy adapter
-│   │   └── finedge_provider.py    # FinEdge adapter (stock universe, corp actions, partial P&L)
+│   │   └── finedge_provider.py    # FinEdge fallback adapter
 │   ├── repositories/
 │   │   └── stock_repository.py    # All CRUD for source-neutral stock tables
 │   ├── services/

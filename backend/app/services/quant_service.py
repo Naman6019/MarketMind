@@ -178,9 +178,23 @@ def _latest_shareholding(symbol: str) -> dict[str, Any] | None:
 
 
 def _latest_ratios(symbol: str) -> dict[str, Any] | None:
-    ratios = _one("ratios_snapshot", symbol, "snapshot_date")
-    if ratios:
-        return ratios
+    ratio_rows = _rows("ratios_snapshot", symbol, order="snapshot_date", limit=8)
+    if ratio_rows:
+        ratio_fields = (
+            "market_cap",
+            "pe",
+            "pb",
+            "ev_ebitda",
+            "roe",
+            "roce",
+            "debt_to_equity",
+            "dividend_yield",
+            "sales_growth_3y",
+            "profit_growth_3y",
+            "eps_growth_3y",
+            "eps_ttm",
+        )
+        return max(ratio_rows, key=lambda row: sum(row.get(field) is not None for field in ratio_fields))
     legacy = _one("nifty_stocks", symbol)
     if not legacy:
         return None

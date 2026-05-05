@@ -25,14 +25,14 @@ GitHub Actions runs stock and MF jobs from `.github/workflows/`. Jobs are Python
 - NSE universe sync writes `stocks`.
 - Daily and historical EOD price jobs download NSE CM-UDiFF bhavcopy zip files and write `stock_prices_daily` with source `nse_bhavcopy`.
 - EOD price jobs count an empty provider response as a failed symbol, not a successful insert.
-- Stock universe and fundamentals workflows select FinEdge with `STOCK_DATA_PROVIDER=finedge`.
-- Corporate event sync is FinEdge-only in code and requires `FINEDGE_API_KEY`; it must not fall back to IndianAPI.
+- Stock universe, fundamentals, and corporate event workflows select IndianAPI with `STOCK_DATA_PROVIDER=indianapi`.
+- IndianAPI stock fundamentals use `/statement` plus `/stock`; `/historical_data` is used only for price-history fallback, not for fundamentals.
 - Stock price workflows select NSE with `STOCK_DATA_PROVIDER=nse`.
 - YFinance is used only when NSE bhavcopy returns empty or local price history is unavailable.
 - Fundamentals sync is skipped when no external provider is configured.
 - Ratio calculation writes `ratios_snapshot` only when enough statement data exists.
 - Every provider job writes `data_provider_runs` where possible.
 - Deprecated CSV scripts under `backend/scripts/deprecated/` are not scheduled.
-- Stock universe/fundamental/corporate action job secrets are stored as GitHub Repository Secrets: `SUPABASE_URL`, `SUPABASE_KEY`, `FINEDGE_API_KEY`.
+- Stock universe/fundamental/corporate action job secrets are stored as GitHub Repository Secrets: `SUPABASE_URL`, `SUPABASE_KEY`, `INDIAN_API_KEY`.
 - Stock price jobs only need `SUPABASE_URL` and `SUPABASE_KEY`.
 - MF sync still uses `INDIAN_API_KEY` for IndianAPI mutual fund data.

@@ -13,7 +13,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 from app.providers import get_fundamentals_provider
 from app.repositories.stock_repository import StockRepository
-from app.models.stock_models import ProviderRun, DataQualityIssue, FinancialStatement, ShareholdingPattern
+from app.models.stock_models import ProviderRun, DataQualityIssue, FinancialStatement, RatioSnapshot, ShareholdingPattern
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,23 +60,17 @@ def main():
     
     for symbol in symbols:
         try:
-            statements = []
+            statement_rows = []
             if hasattr(provider, 'get_quarterly_results'):
-                qr = provider.get_quarterly_results(symbol)
-                for q in qr:
-                    statements.append(FinancialStatement(**q))
+                statement_rows.extend(provider.get_quarterly_results(symbol))
             if hasattr(provider, 'get_annual_results'):
-                ar = provider.get_annual_results(symbol)
-                for a in ar:
-                    statements.append(FinancialStatement(**a))
+                statement_rows.extend(provider.get_annual_results(symbol))
             if hasattr(provider, 'get_balance_sheet'):
-                bs = provider.get_balance_sheet(symbol)
-                for b in bs:
-                    statements.append(FinancialStatement(**b))
+                statement_rows.extend(provider.get_balance_sheet(symbol))
             if hasattr(provider, 'get_cash_flow'):
-                cf = provider.get_cash_flow(symbol)
-                for c in cf:
-                    statements.append(FinancialStatement(**c))
+                statement_rows.extend(provider.get_cash_flow(symbol))
+
+            statements = [FinancialStatement(**row) for row in _merge_statement_rows(statement_rows)]
                     
             if statements:
                 repo.upsert_financial_statements(statements)
@@ -86,6 +80,11 @@ def main():
                 sh_patterns = [ShareholdingPattern(**s) for s in sh]
                 if sh_patterns:
                     repo.upsert_shareholding_pattern(sh_patterns)
+
+            if hasattr(provider, 'get_ratios_snapshot'):
+                ratio = provider.get_ratios_snapshot(symbol)
+                if ratio:
+                    repo.upsert_ratios_snapshot([RatioSnapshot(**ratio)])
                 
             run.symbols_succeeded += 1
         except Exception as e:
@@ -105,6 +104,22 @@ def main():
         repo.update_provider_run(run_id, run)
         
     print(f"Summary: Attempted: {run.symbols_attempted}, Succeeded: {run.symbols_succeeded}, Failed: {run.symbols_failed}")
+
+def _merge_statement_rows(rows: list[dict]) -> list[dict]:
+    merged: dict[tuple, dict] = {}
+    for row in rows:
+        key = (
+            row.get("symbol"),
+            row.get("period_type"),
+            row.get("period_end_date"),
+            row.get("source"),
+        )
+        existing = merged.setdefault(key, dict(row))
+        for field, value in row.items():
+            if existing.get(field) is None and value is not None:
+                existing[field] = value
+    return list(merged.values())
+
 
 if __name__ == "__main__":
     main()

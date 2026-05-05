@@ -31,11 +31,11 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Next.js `/api/*` proxy pattern is the required frontend/backend boundary.
 - GitHub Actions handles scheduled fetch jobs, not Vercel cron.
 - Mobile dashboard layout keeps chat mounted behind comparison overlays, and chat state lives in a shared store so query/messages survive canvas-to-chat switches.
-- `IndianAPIProvider` is fully implemented for stock universe, EOD prices, corporate actions, and MF data (AUM, NAV, returns). Financial statement methods are stubs pending expansion.
-- `FinEdgeProvider` supports stock universe, corporate actions, and partial annual P&L fundamentals using `FINEDGE_API_KEY`.
-- `sync_corporate_events.py` is FinEdge-only and does not use IndianAPI fallback, avoiding IndianAPI 403 failures for stock corporate actions.
+- `IndianAPIProvider` is implemented for stock universe, `/stock` profile data, `/statement` fundamentals/ratios/shareholding, `/historical_data` price history, corporate actions, and MF data (AUM, NAV, returns).
+- `FinEdgeProvider` remains a fallback only; free keys should not be relied on for fundamentals.
+- `sync_corporate_events.py` uses IndianAPI with `INDIANAPI_KEY`/`INDIAN_API_KEY`.
 - Stock EOD and historical price backfill use NSE CM-UDiFF bhavcopy zip files and write `stock_prices_daily` with source `nse_bhavcopy`.
-- IndianAPI EOD price history follows the documented `/historical_data?symbol=...&period=1yr&filter=price` request shape.
+- Scheduled stock EOD and historical price jobs stay on NSE CM-UDiFF bhavcopy, with IndianAPI `/historical_data` available in the adapter as a fallback path.
 - `sync_mf_from_indianapi.py` job syncs MF AUM and returns from IndianAPI into the `mutual_funds` Supabase table, running as part of the `mf-sync.yml` workflow.
 
 ## In Progress
@@ -46,7 +46,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Mutual fund missing data cleanup after stock historical backfill.
 
 ## Known Gaps
-- IndianAPI financial statement endpoints (`get_quarterly_results`, `get_balance_sheet`, etc.) are stubs; `STOCK_DATA_PROVIDER=manual` remains the active local fallback path.
+- IndianAPI fundamentals now use `/statement` plus `/stock`. Field coverage depends on what those endpoints return for each symbol.
 - Frontend proxy route rate limiting still pending.
 - YFinance rate limits often on Render.
 - Portfolio overlap is partial because AMFI holdings often returns `Nil`.

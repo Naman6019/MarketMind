@@ -201,24 +201,23 @@ def test_synthesis_prompt_excludes_large_comparison_payload(monkeypatch):
     assert len(captured["context"]) < 5000
 
 
-def test_corporate_events_job_uses_finedge_even_if_stock_provider_is_indianapi(monkeypatch):
+def test_corporate_events_job_uses_indianapi(monkeypatch):
     from app.jobs import sync_corporate_events
 
     monkeypatch.setenv("STOCK_DATA_PROVIDER", "indianapi")
-    monkeypatch.setenv("INDIANAPI_KEY", "bad-key")
-    monkeypatch.setenv("FINEDGE_API_KEY", "good-key")
+    monkeypatch.setenv("INDIANAPI_KEY", "good-key")
 
     provider = sync_corporate_events.get_corporate_events_provider()
 
-    assert provider.name == "finedge"
+    assert provider.name == "indianapi"
 
 
-def test_corporate_events_job_requires_finedge_key(monkeypatch):
+def test_corporate_events_job_requires_indianapi_key(monkeypatch):
     from app.jobs import sync_corporate_events
 
     monkeypatch.setenv("STOCK_DATA_PROVIDER", "indianapi")
-    monkeypatch.setenv("INDIANAPI_KEY", "bad-key")
-    monkeypatch.delenv("FINEDGE_API_KEY", raising=False)
+    monkeypatch.delenv("INDIANAPI_KEY", raising=False)
+    monkeypatch.delenv("INDIAN_API_KEY", raising=False)
 
     assert sync_corporate_events.get_corporate_events_provider() is None
 
@@ -246,33 +245,141 @@ def test_stock_price_upsert_payload_format():
     }
 
 
-def test_indianapi_eod_prices_use_documented_symbol_param(monkeypatch):
+def test_indianapi_eod_prices_use_documented_stock_name_param(monkeypatch):
     from app.providers import indianapi_provider
 
-    captured = {}
+    captured = []
 
     class FakeResponse:
         status_code = 200
 
         def json(self):
-            return {"datasets": []}
+            return {
+                "datasets": [
+                    {"metric": "Price", "values": [["2026-05-01", "100.5"]]},
+                    {"metric": "Volume", "values": [["2026-05-01", 1200, {"delivery": 52}]]},
+                ]
+            }
 
     def fake_get(url, params=None, headers=None, timeout=None):
-        captured["url"] = url
-        captured["params"] = params
-        captured["headers"] = headers
+        captured.append({"url": url, "params": params, "headers": headers})
         return FakeResponse()
 
     monkeypatch.setenv("INDIANAPI_KEY", "test-key")
     monkeypatch.setattr(indianapi_provider.httpx, "get", fake_get)
 
     provider = indianapi_provider.IndianAPIProvider()
-    provider.get_eod_prices("TATAMOTORS")
+    prices = provider.get_eod_prices("TATAMOTORS")
 
-    assert captured["url"].endswith("/historical_data")
-    assert captured["params"]["symbol"] == "TATAMOTORS"
-    assert "stock_name" not in captured["params"]
-    assert captured["headers"]["X-API-Key"] == "test-key"
+    assert captured[0]["url"].endswith("/historical_data")
+    assert captured[0]["params"] == {"stock_name": "TATAMOTORS", "period": "1yr", "filter": "price"}
+    assert captured[0]["headers"]["X-API-Key"] == "test-key"
+    assert prices[0]["close"] == 100.5
+    assert prices[0]["volume"] == 1200
+    assert prices[0]["delivery_percent"] == 52
+
+
+def test_indianapi_stock_endpoint_maps_ratios_and_shareholding(monkeypatch):
+    from app.providers import indianapi_provider
+
+    captured = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "tickerId": "TCS",
+                "companyName": "Tata Consultancy Services",
+                "industry": "IT Services",
+                "keyMetrics": {
+                    "Market Cap": 1000,
+                    "P/E Ratio": 25,
+                    "ROE": 0.32,
+                    "Debt to Equity": 0.1,
+                },
+                "shareholding": {
+                    "Promoters": {"Mar 2026": 72.3},
+                    "FII": {"Mar 2026": 12.4},
+                    "DII": {"Mar 2026": 8.1},
+                    "Public": {"Mar 2026": 7.2},
+                },
+                "financials": {
+                    "quarter_results": {
+                        "Sales": {"Mar 2026": 100},
+                        "Net Profit": {"Mar 2026": 20},
+                        "EPS in Rs": {"Mar 2026": 5},
+                    }
+                },
+            }
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured.append({"url": url, "params": params, "headers": headers})
+        return FakeResponse()
+
+    monkeypatch.setenv("INDIANAPI_KEY", "test-key")
+    monkeypatch.setattr(indianapi_provider.httpx, "get", fake_get)
+
+    provider = indianapi_provider.IndianAPIProvider()
+    ratios = provider.get_ratios_snapshot("TCS")
+    shareholding = provider.get_shareholding("TCS")
+    quarterly = provider.get_quarterly_results("TCS")
+
+    assert any(call["url"].endswith("/stock") and call["params"] == {"name": "TCS"} for call in captured)
+    assert captured[0]["headers"]["X-API-Key"] == "test-key"
+    assert ratios["pe"] == 25
+    assert ratios["roe"] == 0.32
+    assert ratios["debt_to_equity"] == 0.1
+    assert shareholding[0]["promoter_holding"] == 72.3
+    assert quarterly[0]["period_type"] == "quarterly"
+    assert quarterly[0]["revenue"] == 100
+    assert quarterly[0]["net_profit"] == 20
+
+
+def test_indianapi_statement_endpoint_maps_fundamentals(monkeypatch):
+    from app.providers import indianapi_provider
+
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        calls.append((url, params))
+        if url.endswith("/statement") and params["stats"] == "quarter_results":
+            return FakeResponse({
+                "Sales": {"Mar 2026": 100},
+                "Net Profit": {"Mar 2026": 20},
+                "EPS in Rs": {"Mar 2026": 5},
+            })
+        if url.endswith("/statement") and params["stats"] == "ratios":
+            return FakeResponse({
+                "ROCE": {"Mar 2025": 0.2, "Mar 2026": 0.25},
+                "P/E": {"Mar 2026": 22},
+            })
+        if url.endswith("/stock"):
+            return FakeResponse({})
+        return FakeResponse({})
+
+    monkeypatch.setenv("INDIANAPI_KEY", "test-key")
+    monkeypatch.setattr(indianapi_provider.httpx, "get", fake_get)
+
+    provider = indianapi_provider.IndianAPIProvider()
+    quarterly = provider.get_quarterly_results("TCS")
+    ratios = provider.get_ratios_snapshot("TCS")
+
+    assert calls[0][0].endswith("/statement")
+    assert calls[0][1] == {"stock_name": "TCS", "stats": "quarter_results"}
+    assert quarterly[0]["revenue"] == 100
+    assert quarterly[0]["net_profit"] == 20
+    assert ratios["roce"] == 0.25
+    assert ratios["pe"] == 22
 
 
 def test_finedge_eod_prices_use_token_query(monkeypatch):

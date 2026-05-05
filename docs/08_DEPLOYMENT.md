@@ -22,11 +22,11 @@ MarketMind utilizes a split deployment architecture due to the differing runtime
 |---|---|---|
 | `fetch_stocks.yml` | Daily `0 11 * * *` | Runs `scripts/run_fetch.py` for legacy EOD stock fetch |
 | `mf-sync.yml` | Weekdays `30 13 * * 1-5` | AMFI NAV → NAV history → MF metadata (TER/AUM) → IndianAPI MF AUM/returns |
-| `sync-stock-universe.yml` | Daily `0 1 * * *` | Syncs all NSE/BSE stock metadata via FinEdge |
+| `sync-stock-universe.yml` | Daily `0 1 * * *` | Syncs all NSE/BSE stock metadata via IndianAPI |
 | `sync-prices-daily.yml` | Weekdays `30 12 * * 1-5` | Syncs latest EOD prices via NSE CM-UDiFF bhavcopy |
 | `sync-price-history.yml` | Manual only | Backfills historical EOD prices via NSE CM-UDiFF bhavcopy |
 | `sync-fundamentals-weekly.yml` | Saturdays `0 2 * * 6` | Fetches financial statements + recalculates ratios |
-| `sync-corporate-events.yml` | Daily `0 3 * * *` | Fetches dividends, splits, bonuses via FinEdge |
+| `sync-corporate-events.yml` | Daily `0 3 * * *` | Fetches dividends, splits, bonuses via IndianAPI |
 | `keepalive.yml` | Scheduled | Pings Render to prevent free-tier spin-down |
 
-- **Secrets**: Stock price jobs use `SUPABASE_URL` and `SUPABASE_KEY`. FinEdge stock metadata/fundamental jobs also use `FINEDGE_API_KEY`. MF sync still uses `INDIAN_API_KEY`.
+- **Secrets**: Stock price jobs use `SUPABASE_URL` and `SUPABASE_KEY`. IndianAPI stock/MF jobs also use `INDIAN_API_KEY`.
