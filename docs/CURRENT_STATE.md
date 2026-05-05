@@ -46,7 +46,7 @@ MarketMind is a research-only Indian equities and mutual fund app.
 - Mutual fund missing data cleanup after stock historical backfill.
 
 ## Known Gaps
-- IndianAPI fundamentals now use `/statement` plus `/stock`. Field coverage depends on what those endpoints return for each symbol.
+- IndianAPI fundamentals use `/statement` plus `/stock` where allowed. If those return 403, limited valuation fields can still come from `/historical_data` filters.
 - Frontend proxy route rate limiting still pending.
 - YFinance rate limits often on Render.
 - Portfolio overlap is partial because AMFI holdings often returns `Nil`.

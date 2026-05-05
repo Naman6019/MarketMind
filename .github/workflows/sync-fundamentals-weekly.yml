@@ -1,9 +1,32 @@
-name: Sync Fundamentals Weekly
+name: Sync Fundamentals
 
 on:
   schedule:
     - cron: '0 2 * * 6'
+    - cron: '0 2 1 * *'
   workflow_dispatch:
+    inputs:
+      scope:
+        description: 'watchlist, full, or symbols'
+        required: false
+        default: 'watchlist'
+        type: choice
+        options:
+          - watchlist
+          - full
+          - symbols
+      symbols:
+        description: 'Comma-separated symbols for on-demand refresh'
+        required: false
+        default: ''
+      limit:
+        description: 'Max symbols to refresh'
+        required: false
+        default: ''
+      universe:
+        description: 'Universe for full refresh'
+        required: false
+        default: 'NIFTY500'
 
 jobs:
   sync:
@@ -26,10 +49,44 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           STOCK_DATA_PROVIDER: indianapi
           INDIANAPI_KEY: ${{ secrets.INDIAN_API_KEY }}
+          FUNDAMENTALS_WATCHLIST_SYMBOLS: ${{ vars.FUNDAMENTALS_WATCHLIST_SYMBOLS }}
+          INDIANAPI_REQUEST_SLEEP_SECONDS: '1.05'
+          DISPATCH_SCOPE: ${{ inputs.scope }}
+          DISPATCH_SYMBOLS: ${{ inputs.symbols }}
+          DISPATCH_LIMIT: ${{ inputs.limit }}
+          DISPATCH_UNIVERSE: ${{ inputs.universe }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ] || [ -z "$INDIANAPI_KEY" ]; then
             echo "Error: Missing SUPABASE_URL, SUPABASE_KEY, or INDIAN_API_KEY"
             exit 1
           fi
-          python -m backend.app.jobs.sync_fundamentals
+
+          scope="${DISPATCH_SCOPE:-watchlist}"
+          symbols="${DISPATCH_SYMBOLS:-}"
+          limit="${DISPATCH_LIMIT:-}"
+          universe="${DISPATCH_UNIVERSE:-NIFTY500}"
+
+          if [ "$EVENT_SCHEDULE" = "0 2 1 * *" ]; then
+            scope="full"
+            limit="${limit:-500}"
+            universe="NIFTY500"
+          elif [ "$EVENT_SCHEDULE" = "0 2 * * 6" ]; then
+            if [ "$(date -u +%d)" = "01" ]; then
+              echo "Skipping weekly watchlist refresh because monthly full refresh runs today."
+              exit 0
+            fi
+            scope="watchlist"
+            limit="${limit:-100}"
+          fi
+
+          args=(--scope "$scope" --universe "$universe")
+          if [ -n "$limit" ]; then
+            args+=(--limit "$limit")
+          fi
+          if [ -n "$symbols" ]; then
+            args=(--symbols "$symbols")
+          fi
+
+          python -m backend.app.jobs.sync_fundamentals "${args[@]}"
           python -m backend.app.jobs.calculate_ratios

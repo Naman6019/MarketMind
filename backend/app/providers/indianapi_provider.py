@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from datetime import date, datetime
 from typing import Any
 
@@ -16,30 +17,42 @@ logger = logging.getLogger(__name__)
 
 class IndianAPIProvider(FundamentalsProvider):
     name = "indianapi"
-    base_url = "https://analyst.indianapi.in"
+    base_url = "https://stock.indianapi.in"
 
     def __init__(self) -> None:
         self.api_key = os.environ.get("INDIANAPI_KEY") or os.environ.get("INDIAN_API_KEY")
+        self.request_sleep_seconds = float(os.environ.get("INDIANAPI_REQUEST_SLEEP_SECONDS", "0"))
+        self._last_request_at = 0.0
         self._stock_cache: dict[str, dict[str, Any] | None] = {}
         self._statement_cache: dict[tuple[str, str], dict[str, Any] | list[Any] | None] = {}
+        self._historical_cache: dict[tuple[str, str, str], dict[str, Any] | None] = {}
 
     def is_available(self) -> bool:
         return bool(self.api_key)
 
     def _get_headers(self) -> dict:
-        return {"X-API-Key": self.api_key}
+        return {"x-api-key": self.api_key}
+
+    def _get(self, path: str, params: dict[str, Any] | None = None, timeout: float = 15.0) -> httpx.Response:
+        if self.request_sleep_seconds > 0:
+            elapsed = time.monotonic() - self._last_request_at
+            if elapsed < self.request_sleep_seconds:
+                time.sleep(self.request_sleep_seconds - elapsed)
+        res = httpx.get(
+            f"{self.base_url}{path}",
+            params=params,
+            headers=self._get_headers(),
+            timeout=timeout,
+        )
+        self._last_request_at = time.monotonic()
+        return res
 
     def _get_stock_payload(self, symbol: str) -> dict[str, Any] | None:
         clean = symbol.strip().upper()
         if clean in self._stock_cache:
             return self._stock_cache[clean]
         try:
-            res = httpx.get(
-                f"{self.base_url}/stock",
-                params={"name": clean},
-                headers=self._get_headers(),
-                timeout=15.0,
-            )
+            res = self._get("/stock", params={"name": clean}, timeout=15.0)
             if res.status_code != 200:
                 logger.warning("IndianAPI /stock failed for %s with %s", clean, res.status_code)
                 self._stock_cache[clean] = None
@@ -58,12 +71,7 @@ class IndianAPIProvider(FundamentalsProvider):
         if key in self._statement_cache:
             return self._statement_cache[key]
         try:
-            res = httpx.get(
-                f"{self.base_url}/statement",
-                params={"stock_name": clean, "stats": stats},
-                headers=self._get_headers(),
-                timeout=15.0,
-            )
+            res = self._get("/statement", params={"stock_name": clean, "stats": stats}, timeout=15.0)
             if res.status_code != 200:
                 logger.warning("IndianAPI /statement failed for %s/%s with %s", clean, stats, res.status_code)
                 self._statement_cache[key] = None
@@ -74,6 +82,25 @@ class IndianAPIProvider(FundamentalsProvider):
         except Exception as exc:
             logger.error("IndianAPI /statement error for %s/%s: %s", clean, stats, exc)
             self._statement_cache[key] = None
+            return None
+
+    def _get_historical_payload(self, symbol: str, period: str, filter_name: str) -> dict[str, Any] | None:
+        clean = symbol.strip().upper()
+        key = (clean, period, filter_name)
+        if key in self._historical_cache:
+            return self._historical_cache[key]
+        try:
+            res = self._get("/historical_data", params={"stock_name": clean, "period": period, "filter": filter_name}, timeout=15.0)
+            if res.status_code != 200:
+                logger.warning("IndianAPI /historical_data failed for %s/%s with %s", clean, filter_name, res.status_code)
+                self._historical_cache[key] = None
+                return None
+            data = res.json()
+            self._historical_cache[key] = data if isinstance(data, dict) else None
+            return self._historical_cache[key]
+        except Exception as exc:
+            logger.error("IndianAPI /historical_data error for %s/%s: %s", clean, filter_name, exc)
+            self._historical_cache[key] = None
             return None
 
     # ------------------------------------------------------------------ #
@@ -115,17 +142,9 @@ class IndianAPIProvider(FundamentalsProvider):
 
     def get_eod_prices(self, symbol: str) -> list[dict]:
         try:
-            res = httpx.get(
-                f"{self.base_url}/historical_data",
-                params={"stock_name": symbol, "period": "1yr", "filter": "price"},
-                headers=self._get_headers(),
-                timeout=15.0,
-            )
-            if res.status_code != 200:
-                logger.warning("IndianAPI get_eod_prices failed for %s with %s", symbol, res.status_code)
+            data = self._get_historical_payload(symbol, "1yr", "price")
+            if not data:
                 return []
-
-            data = res.json()
             datasets = data.get("datasets", []) if isinstance(data, dict) else []
             price_map: dict[str, float] = {}
             volume_map: dict[str, Any] = {}
@@ -183,12 +202,7 @@ class IndianAPIProvider(FundamentalsProvider):
         Returns list of dicts compatible with CorporateEvent model.
         """
         try:
-            res = httpx.get(
-                f"{self.base_url}/corporate_actions",
-                params={"stock_name": symbol},
-                headers=self._get_headers(),
-                timeout=10.0,
-            )
+            res = self._get("/corporate_actions", params={"stock_name": symbol}, timeout=10.0)
             if res.status_code != 200:
                 logger.warning("IndianAPI get_corporate_actions failed for %s with %s", symbol, res.status_code)
                 return []
@@ -263,11 +277,15 @@ class IndianAPIProvider(FundamentalsProvider):
 
     def get_balance_sheet(self, symbol: str) -> list[dict]:
         data = self._get_statement_payload(symbol, "balancesheet")
+        if isinstance(data, dict) and not _is_metric_period_table(data):
+            return [_flat_statement_row(symbol, "annual", data, self.name)]
         tables = [data] if isinstance(data, dict) and _is_metric_period_table(data) else _find_period_tables(data, ("balance",))
         return _statement_rows(symbol, tables, "annual", self.name)
 
     def get_cash_flow(self, symbol: str) -> list[dict]:
         data = self._get_statement_payload(symbol, "cashflow")
+        if isinstance(data, dict) and not _is_metric_period_table(data):
+            return [_flat_statement_row(symbol, "annual", data, self.name)]
         tables = [data] if isinstance(data, dict) and _is_metric_period_table(data) else _find_period_tables(data, ("cash",))
         return _statement_rows(symbol, tables, "annual", self.name)
 
@@ -283,21 +301,21 @@ class IndianAPIProvider(FundamentalsProvider):
     def get_ratios_snapshot(self, symbol: str) -> dict[str, Any] | None:
         statement_data = self._get_statement_payload(symbol, "ratios")
         stock_data = self._get_stock_payload(symbol)
-        if not statement_data and not stock_data:
-            return None
         ratio_tables = [statement_data] if isinstance(statement_data, dict) and _is_metric_period_table(statement_data) else _find_period_tables(statement_data, ("ratio",))
         sections = _find_named_sections(stock_data, ("keymetrics", "ratio", "valuation", "stockdetailsreusabledata"))
+        if isinstance(statement_data, dict):
+            sections.append(statement_data)
         if stock_data:
             sections.append(stock_data)
         ratios = {
             "symbol": symbol.strip().upper(),
             "snapshot_date": date.today(),
-            "market_cap": _latest_metric_number(ratio_tables, "market cap", "marketcap", "mcap") or _find_number(sections, "market cap", "marketcap", "mcap"),
+            "market_cap": _latest_metric_number(ratio_tables, "market cap", "marketcap", "mcap") or _find_number(sections, "market cap", "marketcap", "mcap") or self._latest_historical_number(symbol, "mcs"),
             "enterprise_value": _latest_metric_number(ratio_tables, "enterprise value", "enterprisevalue", "ev") or _find_number(sections, "enterprise value", "enterprisevalue", "ev"),
-            "pe": _latest_metric_number(ratio_tables, "p/e", "pe", "pe ratio", "p/e ratio", "price to earnings") or _find_number(sections, "p/e", "pe", "pe ratio", "p/e ratio", "price to earnings"),
-            "pb": _latest_metric_number(ratio_tables, "p/b", "pb", "pb ratio", "price to book") or _find_number(sections, "p/b", "pb", "pb ratio", "price to book"),
+            "pe": _latest_metric_number(ratio_tables, "p/e", "pe", "pe ratio", "p/e ratio", "price to earnings") or _find_number(sections, "p/e", "pe", "pe ratio", "p/e ratio", "price to earnings") or self._latest_historical_number(symbol, "pe"),
+            "pb": _latest_metric_number(ratio_tables, "p/b", "pb", "pb ratio", "price to book") or _find_number(sections, "p/b", "pb", "pb ratio", "price to book") or self._latest_historical_number(symbol, "ptb"),
             "ps": _latest_metric_number(ratio_tables, "p/s", "ps", "price to sales") or _find_number(sections, "p/s", "ps", "price to sales"),
-            "ev_ebitda": _latest_metric_number(ratio_tables, "ev/ebitda", "evebitda") or _find_number(sections, "ev/ebitda", "evebitda"),
+            "ev_ebitda": _latest_metric_number(ratio_tables, "ev/ebitda", "evebitda") or _find_number(sections, "ev/ebitda", "evebitda") or self._latest_historical_number(symbol, "evebitda"),
             "roe": _latest_metric_number(ratio_tables, "roe", "return on equity") or _find_number(sections, "roe", "return on equity"),
             "roce": _latest_metric_number(ratio_tables, "roce", "return on capital employed") or _find_number(sections, "roce", "return on capital employed"),
             "roa": _latest_metric_number(ratio_tables, "roa", "return on assets") or _find_number(sections, "roa", "return on assets"),
@@ -315,6 +333,10 @@ class IndianAPIProvider(FundamentalsProvider):
         }
         return ratios if any(value is not None for key, value in ratios.items() if key not in {"symbol", "snapshot_date", "source"}) else None
 
+    def _latest_historical_number(self, symbol: str, filter_name: str) -> float | None:
+        data = self._get_historical_payload(symbol, "1yr", filter_name)
+        return _latest_dataset_number(data)
+
     # ------------------------------------------------------------------ #
     #  Mutual Fund Details — uses /mutual_funds_details                    #
     # ------------------------------------------------------------------ #
@@ -326,12 +348,7 @@ class IndianAPIProvider(FundamentalsProvider):
         Returns a flat dict with keys: aum, expense_ratio, nav, category, fund_house, etc.
         """
         try:
-            res = httpx.get(
-                f"{self.base_url}/mutual_funds_details",
-                params={"fund_id": fund_id},
-                headers=self._get_headers(),
-                timeout=10.0,
-            )
+            res = self._get("/mutual_funds_details", params={"fund_id": fund_id}, timeout=10.0)
             if res.status_code != 200:
                 logger.warning("IndianAPI get_mutual_fund_details failed for %s with %s", fund_id, res.status_code)
                 return None
@@ -365,11 +382,7 @@ class IndianAPIProvider(FundamentalsProvider):
         Uses /mutual_funds endpoint which returns categorized data.
         """
         try:
-            res = httpx.get(
-                f"{self.base_url}/mutual_funds",
-                headers=self._get_headers(),
-                timeout=20.0,
-            )
+            res = self._get("/mutual_funds", timeout=20.0)
             if res.status_code != 200:
                 logger.warning("IndianAPI get_mf_list failed with %s", res.status_code)
                 return []
@@ -416,7 +429,12 @@ def _safe_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
-        return float(value)
+        cleaned = str(value)
+        cleaned = re.sub(r"\s+", "", cleaned)
+        cleaned = cleaned.replace(",", "").replace("%", "").replace("₹", "")
+        if cleaned in {"", "-", "--", "NA", "N/A"}:
+            return None
+        return float(cleaned)
     except (TypeError, ValueError):
         return None
 
@@ -539,6 +557,32 @@ def _statement_rows(symbol: str, tables: list[dict[str, Any]], period_type: str,
     return sorted(rows_by_date.values(), key=lambda item: item["period_end_date"], reverse=True)
 
 
+def _flat_statement_row(symbol: str, period_type: str, table: dict[str, Any], source: str) -> dict[str, Any]:
+    row = _empty_statement(symbol, period_type, date.today(), source)
+    row["revenue"] = _pick_number(table, "sales", "revenue", "net sales")
+    row["operating_profit"] = _pick_number(table, "operating profit")
+    row["ebitda"] = _pick_number(table, "ebitda")
+    row["ebit"] = _pick_number(table, "ebit")
+    row["profit_before_tax"] = _pick_number(table, "profit before tax", "pbt")
+    row["net_profit"] = _pick_number(table, "net profit", "pat", "profit after tax")
+    row["eps"] = _pick_number(table, "eps", "eps in rs")
+    row["total_assets"] = _pick_number(table, "total assets")
+    row["total_liabilities"] = _pick_number(table, "total liabilities")
+    row["total_debt"] = _pick_number(table, "borrowings", "total debt", "debt")
+    row["cash_and_equivalents"] = _pick_number(table, "cash and equivalents", "cash")
+    row["cash_from_operations"] = _pick_number(table, "cash from operations", "cash from operating activity")
+    row["cash_from_investing"] = _pick_number(table, "cash from investing", "cash from investing activity")
+    row["cash_from_financing"] = _pick_number(table, "cash from financing", "cash from financing activity")
+
+    share_capital = _pick_number(table, "share capital")
+    reserves = _pick_number(table, "reserves")
+    if share_capital is not None or reserves is not None:
+        row["total_equity"] = (share_capital or 0) + (reserves or 0)
+    else:
+        row["total_equity"] = _pick_number(table, "total equity", "net worth")
+    return row
+
+
 def _empty_statement(symbol: str, period_type: str, period_end: date, source: str) -> dict[str, Any]:
     return {
         "symbol": symbol,
@@ -647,4 +691,22 @@ def _latest_metric_number(tables: list[dict[str, Any]], *keys: str) -> float | N
                     continue
                 if best is None or period_end > best[0]:
                     best = (period_end, value)
+    return best[1] if best else None
+
+
+def _latest_dataset_number(data: dict[str, Any] | None) -> float | None:
+    if not data:
+        return None
+    best: tuple[date, float] | None = None
+    for dataset in data.get("datasets", []) or []:
+        values = dataset.get("values") or []
+        for row in values:
+            if not isinstance(row, list) or len(row) < 2:
+                continue
+            period_end = _parse_period_label(row[0])
+            value = _safe_float(row[1])
+            if not period_end or value is None:
+                continue
+            if best is None or period_end > best[0]:
+                best = (period_end, value)
     return best[1] if best else None

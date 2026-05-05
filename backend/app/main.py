@@ -38,6 +38,7 @@ from app.services.quant_service import (
     get_stock_financials,
     get_stock_price_history,
 )
+from app.services import indianapi_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,6 +58,8 @@ app.add_middleware(
 
 from app.routes.quant import router as quant_router
 app.include_router(quant_router)
+from app.routes.indianapi import router as indianapi_router
+app.include_router(indianapi_router)
 
 @app.get("/")
 def read_root():
@@ -629,6 +632,7 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> str:
 
 def _stock_metric_rows(data: dict) -> list[tuple[str, str]]:
     period = _risk_period(data)
+    source_summary = data.get("source_summary") or {}
     rows = [
         ("Timestamp", _safe_value(data.get("timestamp"))),
         ("Price", _format_price(data.get("price"))),
@@ -639,6 +643,8 @@ def _stock_metric_rows(data: dict) -> list[tuple[str, str]]:
         (f"Alpha vs Nifty ({period})", _format_percent(data.get("alpha_vs_nifty"))),
         ("RSI (14D)", _safe_value(data.get("rsi_14d"))),
         ("Technical Rating", _safe_recommendation(data.get("tv_recommendation"))),
+        ("Source", _safe_value(data.get("source") or source_summary.get("metadata") or "source unavailable")),
+        ("Fetched At", _safe_value(data.get("fetchedAt") or source_summary.get("indianapi_fetched_at") or data.get("timestamp"))),
     ]
     fundamentals = data.get("fundamentals") or {}
     if fundamentals:
@@ -677,6 +683,8 @@ def _fund_metric_rows(data: dict) -> list[tuple[str, str]]:
         ("AUM", _format_inr_market_cap(data.get("aum"))),
         (f"Beta ({period})", _safe_value(data.get("beta"))),
         (f"Alpha vs Nifty ({period})", _format_percent(data.get("alpha_vs_nifty"))),
+        ("Source", _safe_value(data.get("source") or "source unavailable")),
+        ("Fetched At", _safe_value(data.get("fetchedAt") or nav_date)),
     ]
 
 def _looks_like_fund(data: dict) -> bool:
@@ -691,6 +699,15 @@ def _stock_compare_item(symbol: str, risk_metrics: dict | None = None) -> dict:
     if risk_metrics and not item.get("error"):
         item.update(risk_metrics)
     return item
+
+def _walk_dicts(data: Any):
+    if isinstance(data, dict):
+        yield data
+        for value in data.values():
+            yield from _walk_dicts(value)
+    elif isinstance(data, list):
+        for item in data:
+            yield from _walk_dicts(item)
 
 def _comparison_rows(comparison: dict) -> tuple[list[str], list[list[str]], list[str]]:
     entities = list(comparison.keys())
@@ -1207,6 +1224,27 @@ async def chat_endpoint(req: ChatRequest):
         )
         words = [word for word in cleaned.split() if word]
         return f"%{'%'.join(words)}%" if words else "%"
+
+    def _fund_from_indianapi(search_term: str) -> dict | None:
+        result = indianapi_service.resolve_mutual_fund(search_term)
+        if not result.get("ok"):
+            return None
+        for row in _walk_dicts(result.get("data")):
+            name = row.get("scheme_name") or row.get("schemeName") or row.get("fund_name") or row.get("name")
+            if not name:
+                continue
+            return {
+                "name": name,
+                "nav": row.get("nav") or row.get("latest_nav"),
+                "nav_date": row.get("nav_date") or row.get("date"),
+                "category": row.get("category") or row.get("schemeType"),
+                "fund_house": row.get("fund_house") or row.get("fundHouse") or row.get("amc"),
+                "expense_ratio": row.get("expense_ratio") or row.get("expenseRatio"),
+                "aum": row.get("aum") or row.get("asset_size"),
+                "source": "indianapi",
+                "fetchedAt": result.get("fetchedAt"),
+            }
+        return None
     
     if intent == "screen":
         filters = intent_info.get("screen_filters", {})
@@ -1247,6 +1285,9 @@ async def chat_endpoint(req: ChatRequest):
                             }
                     except Exception as e:
                         logger.error(f"Supabase compare error: {e}")
+
+                if not db_data and asset_type != "stock":
+                    db_data = _fund_from_indianapi(entity)
 
                 risk_metrics = {}
                 yf_ticker = None if asset_type == "mutual_fund" else await resolve_mf_ticker(entity)
@@ -1335,6 +1376,11 @@ async def chat_endpoint(req: ChatRequest):
                             "risk_period": f"{metrics.get('period_years', 3)}Y"
                         })
             except: pass
+
+        if (not quant_data or "error" in quant_data) and asset_type != "stock":
+            fund_data = _fund_from_indianapi(ticker or req.query)
+            if fund_data:
+                quant_data = fund_data
             
         if intent in ["news", "both"]:
             news_items = fetch_news(req.query, ticker)

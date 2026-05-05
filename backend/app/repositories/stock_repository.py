@@ -214,27 +214,26 @@ class StockRepository:
     def _upsert(self, table: str, rows: list[dict[str, Any]], on_conflict: str) -> None:
         if not rows or not self._has_client():
             return
-        rows = self._without_disabled_columns(table, rows)
-        try:
-            self.supabase.table(table).upsert(rows, on_conflict=on_conflict).execute()
-        except Exception as exc:
-            missing_column = _missing_column_from_error(exc)
-            if missing_column:
+        attempted_missing: set[str] = set()
+        while True:
+            active_rows = self._without_disabled_columns(table, rows)
+            if not active_rows:
+                return
+            try:
+                self.supabase.table(table).upsert(active_rows, on_conflict=on_conflict).execute()
+                return
+            except Exception as exc:
+                missing_column = _missing_column_from_error(exc)
+                if not missing_column or missing_column in attempted_missing:
+                    logger.warning("Batch upsert failed for %s: %s", table, exc)
+                    return
+                attempted_missing.add(missing_column)
+                self._table_disabled_columns.setdefault(table, set()).add(missing_column)
                 logger.warning(
                     "Retrying %s upsert without missing column %s. Apply pending migrations to keep all fields.",
                     table,
                     missing_column,
                 )
-                self._table_disabled_columns.setdefault(table, set()).add(missing_column)
-                retry_rows = self._without_disabled_columns(table, rows)
-                if retry_rows:
-                    try:
-                        self.supabase.table(table).upsert(retry_rows, on_conflict=on_conflict).execute()
-                        return
-                    except Exception as retry_exc:
-                        logger.warning("Retry upsert failed for %s: %s", table, retry_exc)
-                        return
-            logger.warning("Batch upsert failed for %s: %s", table, exc)
 
     def _fetch_one(self, table: str, symbol: str, order: str | None = None) -> dict[str, Any] | None:
         if not self._has_client():

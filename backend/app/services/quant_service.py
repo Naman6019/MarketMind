@@ -8,6 +8,7 @@ from app.database import supabase
 from app.providers import get_fundamentals_provider
 from app.providers.base import normalize_symbol
 from app.providers.yfinance_provider import YFinanceProvider
+from app.services import indianapi_service
 from app.stock_universe import load_stock_universe, resolve_stock_symbol
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,66 @@ def _empty_fundamentals() -> dict[str, Any]:
     }
 
 
+def _provider_context(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ok": bool(result.get("ok")),
+        "data": result.get("data") if result.get("ok") else None,
+        "source": result.get("source"),
+        "provider": result.get("provider"),
+        "fetchedAt": result.get("fetchedAt"),
+        "stale": result.get("stale", False),
+        "error": result.get("error") if not result.get("ok") else None,
+    }
+
+
+def _metadata_from_indianapi(symbol: str, data: Any) -> dict[str, Any] | None:
+    row = _first_dict(data)
+    if not row:
+        return None
+    return {
+        "symbol": normalize_symbol(row.get("tickerId") or row.get("symbol") or symbol),
+        "exchange": row.get("exchange") or "NSE",
+        "company_name": row.get("companyName") or row.get("name") or row.get("company_name") or symbol,
+        "isin": row.get("isin") or row.get("ISIN"),
+        "series": row.get("series"),
+        "sector": row.get("sector") or row.get("mgSector"),
+        "industry": row.get("industry") or row.get("mgIndustry"),
+        "is_active": True,
+        "source": "indianapi",
+    }
+
+
+def _resolve_indianapi_stock_symbol(entity: str) -> str | None:
+    result = indianapi_service.resolve_stock(entity)
+    if not result.get("ok"):
+        return None
+    for row in _iter_dicts(result.get("data")):
+        value = row.get("tickerId") or row.get("symbol") or row.get("nseCode") or row.get("nse-code")
+        if value:
+            return normalize_symbol(str(value))
+    return None
+
+
+def _first_dict(data: Any) -> dict[str, Any]:
+    if isinstance(data, dict):
+        return data
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                return item
+    return {}
+
+
+def _iter_dicts(data: Any):
+    if isinstance(data, dict):
+        yield data
+        for value in data.values():
+            yield from _iter_dicts(value)
+    elif isinstance(data, list):
+        for item in data:
+            yield from _iter_dicts(item)
+
+
 def resolve_stock_request(entity: str) -> str | None:
     clean = normalize_symbol(entity)
     resolved = resolve_stock_symbol(entity) or clean
@@ -104,7 +165,8 @@ def resolve_stock_request(entity: str) -> str | None:
         return resolved
     if _one("stocks", resolved) or _one("stock_prices_daily", resolved, "date") or _one("stock_history", resolved, "date"):
         return resolved
-    return resolve_stock_symbol(entity)
+    provider_match = _resolve_indianapi_stock_symbol(entity)
+    return provider_match or resolve_stock_symbol(entity)
 
 
 def get_stock_metadata(symbol: str) -> dict[str, Any] | None:
@@ -210,13 +272,15 @@ def _latest_ratios(symbol: str) -> dict[str, Any] | None:
 def build_stock_profile(symbol: str) -> dict[str, Any]:
     clean = normalize_symbol(symbol)
     provider = get_fundamentals_provider()
+    metadata = get_stock_metadata(clean)
+    indianapi_profile = indianapi_service.get_stock_research_profile(clean)
     try:
-        provider_profile = provider.get_company_profile(clean)
+        provider_profile = None if metadata else provider.get_company_profile(clean)
     except Exception as exc:
         logger.warning("Provider profile failed for %s via %s: %s", clean, provider.name, exc)
         provider_profile = None
 
-    metadata = get_stock_metadata(clean) or provider_profile or {"symbol": clean}
+    metadata = metadata or provider_profile or _metadata_from_indianapi(clean, indianapi_profile.get("data")) or {"symbol": clean}
     prices = get_stock_price_history(clean, days=2)
     try:
         provider_ratios = provider.get_ratios_snapshot(clean)
@@ -232,17 +296,25 @@ def build_stock_profile(symbol: str) -> dict[str, Any]:
         shareholding_rows = []
     shareholding = shareholding_rows[0] if shareholding_rows else _latest_shareholding(clean)
     shareholding_source = shareholding.get("source") if isinstance(shareholding, dict) else None
+    indianapi_actions = indianapi_service.get_stock_corporate_actions(clean)
+    indianapi_announcements = indianapi_service.get_stock_recent_announcements(clean)
     return {
         "symbol": clean,
         "metadata": metadata,
         "latest_price": prices[-1] if prices else None,
         "ratios": ratios,
         "shareholding": shareholding or {},
+        "indianapi": {
+            "profile": _provider_context(indianapi_profile),
+            "corporate_actions": _provider_context(indianapi_actions),
+            "recent_announcements": _provider_context(indianapi_announcements),
+        },
         "source_summary": {
             "metadata": metadata.get("source") or provider.name,
             "prices": (prices[-1] or {}).get("source") if prices else None,
             "ratios": ratios.get("source") if isinstance(ratios, dict) else None,
             "shareholding": shareholding_source,
+            "indianapi_fetched_at": indianapi_profile.get("fetchedAt"),
         },
     }
 

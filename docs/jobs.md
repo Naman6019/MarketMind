@@ -9,7 +9,7 @@ GitHub Actions runs stock and MF jobs from `.github/workflows/`. Jobs are Python
 | `sync-stock-universe.yml` | Daily `0 1 * * *` | `python -m backend.app.jobs.sync_stock_universe` |
 | `sync-prices-daily.yml` | Weekdays `30 12 * * 1-5` | `python -m backend.app.jobs.sync_latest_prices` |
 | `sync-price-history.yml` | Manual only | `python -m backend.app.jobs.sync_price_history` |
-| `sync-fundamentals-weekly.yml` | Saturdays `0 2 * * 6` | `python -m backend.app.jobs.sync_fundamentals` + `calculate_ratios` |
+| `sync-fundamentals-weekly.yml` | Saturdays `0 2 * * 6`, monthly `0 2 1 * *`, manual | `python -m backend.app.jobs.sync_fundamentals` + `calculate_ratios` |
 | `sync-corporate-events.yml` | Daily `0 3 * * *` | `python -m backend.app.jobs.sync_corporate_events` |
 | `fetch_stocks.yml` | Daily `0 11 * * *` | `python backend/scripts/run_fetch.py` (legacy EOD fetch) |
 
@@ -26,6 +26,8 @@ GitHub Actions runs stock and MF jobs from `.github/workflows/`. Jobs are Python
 - Daily and historical EOD price jobs download NSE CM-UDiFF bhavcopy zip files and write `stock_prices_daily` with source `nse_bhavcopy`.
 - EOD price jobs count an empty provider response as a failed symbol, not a successful insert.
 - Stock universe, fundamentals, and corporate event workflows select IndianAPI with `STOCK_DATA_PROVIDER=indianapi`.
+- Fundamentals cadence is quota-aware: weekly `watchlist` scope refreshes up to 100 configured symbols, monthly `full` scope refreshes `NIFTY500`, and manual `symbols` scope refreshes compared/on-demand stocks.
+- Configure watched symbols with GitHub Repository Variable `FUNDAMENTALS_WATCHLIST_SYMBOLS` as a comma-separated list. If it is empty, the weekly job falls back to `NIFTY100`.
 - IndianAPI stock fundamentals use `/statement` plus `/stock`; `/historical_data` is used only for price-history fallback, not for fundamentals.
 - Stock price workflows select NSE with `STOCK_DATA_PROVIDER=nse`.
 - YFinance is used only when NSE bhavcopy returns empty or local price history is unavailable.

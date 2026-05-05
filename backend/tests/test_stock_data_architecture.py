@@ -271,9 +271,10 @@ def test_indianapi_eod_prices_use_documented_stock_name_param(monkeypatch):
     provider = indianapi_provider.IndianAPIProvider()
     prices = provider.get_eod_prices("TATAMOTORS")
 
+    assert captured[0]["url"].startswith("https://stock.indianapi.in/")
     assert captured[0]["url"].endswith("/historical_data")
     assert captured[0]["params"] == {"stock_name": "TATAMOTORS", "period": "1yr", "filter": "price"}
-    assert captured[0]["headers"]["X-API-Key"] == "test-key"
+    assert captured[0]["headers"]["x-api-key"] == "test-key"
     assert prices[0]["close"] == 100.5
     assert prices[0]["volume"] == 1200
     assert prices[0]["delivery_percent"] == 52
@@ -326,7 +327,7 @@ def test_indianapi_stock_endpoint_maps_ratios_and_shareholding(monkeypatch):
     quarterly = provider.get_quarterly_results("TCS")
 
     assert any(call["url"].endswith("/stock") and call["params"] == {"name": "TCS"} for call in captured)
-    assert captured[0]["headers"]["X-API-Key"] == "test-key"
+    assert captured[0]["headers"]["x-api-key"] == "test-key"
     assert ratios["pe"] == 25
     assert ratios["roe"] == 0.32
     assert ratios["debt_to_equity"] == 0.1
@@ -380,6 +381,117 @@ def test_indianapi_statement_endpoint_maps_fundamentals(monkeypatch):
     assert quarterly[0]["net_profit"] == 20
     assert ratios["roce"] == 0.25
     assert ratios["pe"] == 22
+
+
+def test_indianapi_flat_balance_sheet_response_maps_statement(monkeypatch):
+    from app.providers import indianapi_provider
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "share_capital": "\n 362\n",
+                "reserves": "\n 94,394\n",
+                "borrowings": "\n 9,392\n",
+                "total_liabilities": "\n 158,649\n",
+                "total_assets": "\n 158,649\n",
+            }
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        return FakeResponse()
+
+    monkeypatch.setenv("INDIANAPI_KEY", "test-key")
+    monkeypatch.setattr(indianapi_provider.httpx, "get", fake_get)
+
+    row = indianapi_provider.IndianAPIProvider().get_balance_sheet("TCS")[0]
+
+    assert captured["url"] == "https://stock.indianapi.in/statement"
+    assert captured["params"] == {"stock_name": "TCS", "stats": "balancesheet"}
+    assert row["total_assets"] == 158649
+    assert row["total_liabilities"] == 158649
+    assert row["total_debt"] == 9392
+    assert row["total_equity"] == 94756
+
+
+def test_indianapi_historical_filters_fill_limited_ratios_when_statement_forbidden(monkeypatch):
+    from app.providers import indianapi_provider
+
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self.payload = payload or {}
+
+        def json(self):
+            return self.payload
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        calls.append((url, params))
+        if url.endswith("/statement") or url.endswith("/stock"):
+            return FakeResponse(403)
+        historical_values = {
+            "pe": 21.5,
+            "ptb": 7.2,
+            "evebitda": 14.1,
+            "mcs": 1200000,
+        }
+        value = historical_values.get(params.get("filter"))
+        return FakeResponse(200, {"datasets": [{"metric": params.get("filter"), "values": [["2026-05-01", value]]}]})
+
+    monkeypatch.setenv("INDIANAPI_KEY", "test-key")
+    monkeypatch.setattr(indianapi_provider.httpx, "get", fake_get)
+
+    ratios = indianapi_provider.IndianAPIProvider().get_ratios_snapshot("TCS")
+
+    assert any(params == {"stock_name": "TCS", "period": "1yr", "filter": "pe"} for _, params in calls)
+    assert ratios["pe"] == 21.5
+    assert ratios["pb"] == 7.2
+    assert ratios["ev_ebitda"] == 14.1
+    assert ratios["market_cap"] == 1200000
+
+
+def test_sync_fundamentals_watchlist_uses_configured_symbols(monkeypatch):
+    from argparse import Namespace
+    from app.jobs import sync_fundamentals
+
+    monkeypatch.setenv("FUNDAMENTALS_WATCHLIST_SYMBOLS", "tcs, reliance, TCS")
+    monkeypatch.delenv("STOCK_INFO_ENRICH_LIMIT", raising=False)
+
+    symbols = sync_fundamentals._select_symbols(None, Namespace(
+        symbols=None,
+        scope="watchlist",
+        universe="NIFTY500",
+        limit=2,
+    ))
+
+    assert symbols == ["TCS", "RELIANCE"]
+
+
+def test_sync_fundamentals_full_uses_nifty500_universe(monkeypatch):
+    from argparse import Namespace
+    from app.jobs import sync_fundamentals
+
+    monkeypatch.delenv("STOCK_INFO_ENRICH_LIMIT", raising=False)
+    monkeypatch.setattr(sync_fundamentals, "load_stock_universe", lambda key=None: {
+        "AAA": {"symbol": "AAA"},
+        "BBB": {"symbol": "BBB"},
+        "CCC": {"symbol": "CCC"},
+    })
+
+    symbols = sync_fundamentals._select_symbols(None, Namespace(
+        symbols=None,
+        scope="full",
+        universe="NIFTY500",
+        limit=2,
+    ))
+
+    assert symbols == ["AAA", "BBB"]
 
 
 def test_finedge_eod_prices_use_token_query(monkeypatch):
@@ -462,6 +574,44 @@ def test_data_quality_issue_allows_legacy_keyword_shape():
 
     assert issue.field_name is None
     assert issue.metadata is None
+
+
+def test_repository_upsert_retries_multiple_missing_columns():
+    from app.repositories.stock_repository import StockRepository
+
+    class FakeQuery:
+        def __init__(self, table, calls):
+            self.table = table
+            self.calls = calls
+
+        def upsert(self, rows, on_conflict=None):
+            self.calls.append(rows[0])
+            return self
+
+        def execute(self):
+            attempt = len(self.calls)
+            if attempt == 1:
+                raise Exception("{'message': \"Could not find the 'first_missing' column of 'demo' in the schema cache\", 'code': 'PGRST204'}")
+            if attempt == 2:
+                raise Exception("{'message': \"Could not find the 'second_missing' column of 'demo' in the schema cache\", 'code': 'PGRST204'}")
+            return None
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def table(self, name):
+            return FakeQuery(name, self.calls)
+
+    client = FakeClient()
+    repo = StockRepository(client=client)
+
+    repo._upsert("demo", [{"symbol": "TCS", "first_missing": 1, "second_missing": 2, "kept": 3}], "symbol")
+
+    assert len(client.calls) == 3
+    assert "first_missing" not in client.calls[1]
+    assert "second_missing" not in client.calls[2]
+    assert client.calls[2]["kept"] == 3
 
 
 def test_nse_udiff_bhavcopy_parser_maps_stock_prices():

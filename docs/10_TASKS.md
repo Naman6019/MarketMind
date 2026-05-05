@@ -18,6 +18,7 @@
 - [ ] Fill mutual fund missing data gaps after stock historical backfill.
 
 ## Done
+- [x] Quota-aware fundamentals cadence: monthly NIFTY500, weekly watched stocks, and on-demand compared symbols.
 - [x] AI chat with asset mode toggle: `Auto`, `Stocks`, `Mutual Funds`.
 - [x] Mutual fund comparison canvas with NAV charts, returns, alpha, beta, Sharpe.
 - [x] MF sync for NAV, TER, and AUM.
